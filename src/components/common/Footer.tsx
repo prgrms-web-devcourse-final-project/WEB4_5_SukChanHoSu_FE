@@ -3,6 +3,7 @@ import {
   HomeOutlined,
   MessageOutlined,
   HeartOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 
@@ -54,6 +55,10 @@ function Footer() {
       <NavItem onClick={() => handleNavigation('/matching')}>
         <HeartOutlined style={{ fontSize: '20px' }} />
         <IconText>매칭</IconText>
+      </NavItem>
+      <NavItem onClick={() => handleNavigation('/profile')}>
+        <UserOutlined style={{ fontSize: '20px' }} />
+        <IconText>프로필</IconText>
       </NavItem>
     </FooterWrap>
   );

@@ -1,14 +1,14 @@
-import { useState } from 'react';
 import styled from '@emotion/styled';
-import { Button, Input, Form, Select, DatePicker } from 'antd';
+import { Button, Input, Form } from 'antd';
+import { Link } from 'react-router-dom';
+import { useSignup } from '../../hooks/api/auth/useSignup';
+import { SignupRequest } from '../../types/auth';
+import { message } from 'antd';
 
 type SignupFormValues = {
   email: string;
   password: string;
   confirmPassword: string;
-  nickname: string;
-  gender: string;
-  birthdate: Date; // DatePicker 값에 따라 Date, string, dayjs.Dayjs 등으로 조정
 };
 
 const SignupContainer = styled.div`
@@ -51,19 +51,41 @@ const SubmitButton = styled(Button)`
   }
 `;
 
-const { Option } = Select;
+const LoginLink = styled.div`
+  text-align: center;
+  margin-top: 16px;
+  font-size: 14px;
+
+  a {
+    color: #ff7f00;
+    font-weight: bold;
+    margin-left: 8px;
+
+    &:hover {
+      color: #e67300;
+    }
+  }
+`;
 
 function Signup() {
   const [form] = Form.useForm();
-  const [loading, setLoading] = useState(false);
+  const { mutate, isPending } = useSignup();
 
   const handleSubmit = (values: SignupFormValues) => {
-    setLoading(true);
-    console.log('회원가입 시도:', values);
-    // 여기에 회원가입 로직 추가
-    setTimeout(() => {
-      setLoading(false);
-    }, 1000);
+    const payload: SignupRequest = {
+      email: values.email,
+      password: values.password,
+      passwordConfirm: values.confirmPassword,
+    };
+    mutate(payload, {
+      onSuccess: () => {
+        message.success('회원가입이 완료되었습니다!');
+        // 예: navigate('/login');
+      },
+      onError: (error) => {
+        message.error(error.message || '회원가입에 실패했습니다.');
+      },
+    });
   };
 
   return (
@@ -123,44 +145,15 @@ function Signup() {
           />
         </Form.Item>
 
-        <Form.Item
-          name="nickname"
-          label="닉네임"
-          rules={[{ required: true, message: '닉네임을 입력해주세요' }]}
-        >
-          <Input placeholder="닉네임을 입력하세요" size="large" />
-        </Form.Item>
-
-        <Form.Item
-          name="gender"
-          label="성별"
-          rules={[{ required: true, message: '성별을 선택해주세요' }]}
-        >
-          <Select placeholder="성별을 선택하세요" size="large">
-            <Option value="male">남성</Option>
-            <Option value="female">여성</Option>
-            <Option value="other">기타</Option>
-          </Select>
-        </Form.Item>
-
-        <Form.Item
-          name="birthdate"
-          label="생년월일"
-          rules={[{ required: true, message: '생년월일을 선택해주세요' }]}
-        >
-          <DatePicker
-            placeholder="생년월일을 선택하세요"
-            size="large"
-            style={{ width: '100%' }}
-          />
-        </Form.Item>
-
         <Form.Item>
-          <SubmitButton type="primary" htmlType="submit" loading={loading}>
+          <SubmitButton type="primary" htmlType="submit" loading={isPending}>
             회원가입
           </SubmitButton>
         </Form.Item>
       </SignupForm>
+      <LoginLink>
+        이미 계정이 있으신가요?<Link to="/login">로그인</Link>
+      </LoginLink>
     </SignupContainer>
   );
 }
