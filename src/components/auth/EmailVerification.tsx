@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Button, Input, Space, Form } from 'antd';
 import { useEmailVerification } from '../../hooks/api/auth/useEmailVerification';
 
