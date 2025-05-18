@@ -7,6 +7,10 @@ import Chat from './pages/Chat';
 import Signup from './pages/auth/Signup';
 import ChatDetail from './pages/ChatDetail';
 import Profile from './pages/Profile';
+import RequireAuth from './components/auth/RequireAuth';
+import ProfileEdit from './pages/profile/ProfileEdit';
+import TodayMatching from './pages/matching/TodayMatching';
+
 function CustomRouter() {
   return (
     <DefaultLayout>
@@ -14,10 +18,62 @@ function CustomRouter() {
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
-        <Route path="/matching" element={<Matching />} />
-        <Route path="/chat" element={<Chat />} />
-        <Route path="/chat/:id" element={<ChatDetail />} />
-        <Route path="/profile" element={<Profile />} />
+        <Route
+          path="/matching/today"
+          element={
+            <RequireAuth>
+              <TodayMatching />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/matching"
+          element={
+            <RequireAuth>
+              {/* <RequireProfile> */}
+              <Matching />
+              {/* </RequireProfile> */}
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/chat"
+          element={
+            <RequireAuth>
+              {/* <RequireProfile> */}
+              <Chat />
+              {/* </RequireProfile> */}
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/chat/:id"
+          element={
+            <RequireAuth>
+              {/* <RequireProfile> */}
+              <ChatDetail />
+              {/* </RequireProfile> */}
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <RequireAuth>
+              {/* <RequireProfile> */}
+              <Profile />
+              {/* </RequireProfile> */}
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/profile/edit"
+          element={
+            <RequireAuth>
+              <ProfileEdit />
+            </RequireAuth>
+          }
+        />
       </Routes>
     </DefaultLayout>
   );

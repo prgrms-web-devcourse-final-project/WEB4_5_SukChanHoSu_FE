@@ -2,6 +2,7 @@ import styled from '@emotion/styled';
 import { List, Avatar, Badge } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import Title from '../components/common/Title';
+import { useState, KeyboardEvent } from 'react';
 
 const ChatContainer = styled.div`
   width: 100%;
@@ -48,6 +49,7 @@ const TimeStamp = styled.div`
 
 function Chat() {
   const navigate = useNavigate();
+  const [isComposing, setIsComposing] = useState(false);
 
   const chatRooms = [
     {
@@ -93,7 +95,23 @@ function Chat() {
   ];
 
   const handleChatClick = (id: number) => {
-    navigate(`/chat/${id}`);
+    if (!isComposing) {
+      navigate(`/chat/${id}`);
+    }
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>, id: number) => {
+    if (e.key === 'Enter' && !isComposing) {
+      navigate(`/chat/${id}`);
+    }
+  };
+
+  const handleCompositionStart = () => {
+    setIsComposing(true);
+  };
+
+  const handleCompositionEnd = () => {
+    setIsComposing(false);
   };
 
   return (
@@ -102,7 +120,13 @@ function Chat() {
       <List
         dataSource={chatRooms}
         renderItem={(item) => (
-          <ChatItem onClick={() => handleChatClick(item.id)}>
+          <ChatItem
+            onClick={() => handleChatClick(item.id)}
+            onKeyDown={(e) => handleKeyDown(e, item.id)}
+            onCompositionStart={handleCompositionStart}
+            onCompositionEnd={handleCompositionEnd}
+            tabIndex={0}
+          >
             <div style={{ position: 'relative' }}>
               <Avatar src={item.avatar} size={50} />
               {item.unread > 0 && (

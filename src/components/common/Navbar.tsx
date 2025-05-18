@@ -1,7 +1,6 @@
 import styled from '@emotion/styled';
-import { Button } from 'antd';
 import { useNavigate } from 'react-router-dom';
-import { UserOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined } from '@ant-design/icons';
 
 const NavbarWrap = styled.div`
   width: 100%;
@@ -29,43 +28,46 @@ const Logo = styled.div`
   }
 `;
 
-const LoginButton = styled(Button)`
-  background-color: #ff7f00;
-  border-color: #ff7f00;
-  color: white;
-  border-radius: 20px;
-  padding: 0 16px;
+const BackButton = styled.div`
+  font-size: 18px;
+  color: #333;
+  cursor: pointer;
+  margin-right: 10px;
 
   &:hover {
-    background-color: #e67300;
-    border-color: #e67300;
-    color: white;
+    color: #ff7f00;
   }
 `;
 
-function Navbar() {
-  const navigate = useNavigate();
+interface NavbarProps {
+  showBackButton?: boolean;
+  onBackClick?: () => void;
+}
 
-  const handleLoginClick = () => {
-    navigate('/login');
-  };
+function Navbar({ showBackButton = false, onBackClick }: NavbarProps) {
+  const navigate = useNavigate();
 
   const handleHomeClick = () => {
     navigate('/');
   };
 
+  const handleBackClick = () => {
+    if (onBackClick) {
+      onBackClick();
+    } else {
+      navigate(-1);
+    }
+  };
+
   return (
     <NavbarWrap>
-      <Logo onClick={handleHomeClick}>MovieMatch</Logo>
-      <div>
-        <LoginButton
-          type="primary"
-          icon={<UserOutlined />}
-          onClick={handleLoginClick}
-        >
-          로그인
-        </LoginButton>
-      </div>
+      {showBackButton ? (
+        <BackButton onClick={handleBackClick}>
+          <ArrowLeftOutlined />
+        </BackButton>
+      ) : (
+        <Logo onClick={handleHomeClick}>MovieMatch</Logo>
+      )}
     </NavbarWrap>
   );
 }

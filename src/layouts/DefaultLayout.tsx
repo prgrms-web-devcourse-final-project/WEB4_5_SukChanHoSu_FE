@@ -1,9 +1,9 @@
 import { css } from '@emotion/react';
 import { Flex } from 'antd';
 import React from 'react';
-import Navbar from '../components/common/Navbar';
 import Footer from '../components/common/Footer';
 import ContentLayout from './ContentLayout';
+
 function DefaultLayout({ children }: { children: React.ReactNode }) {
   return (
     <Flex
@@ -19,7 +19,7 @@ function DefaultLayout({ children }: { children: React.ReactNode }) {
         border: 1px solid #e8e8e8;
       `}
     >
-      <Navbar />
+      <div></div>
       <ContentLayout>{children}</ContentLayout>
       <Footer />
     </Flex>

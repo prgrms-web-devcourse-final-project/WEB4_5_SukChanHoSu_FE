@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, KeyboardEvent } from 'react';
 import styled from '@emotion/styled';
 import { Avatar, Button, Input } from 'antd';
 import { ArrowLeftOutlined, SendOutlined } from '@ant-design/icons';
@@ -109,6 +109,7 @@ function ChatDetail() {
   const navigate = useNavigate();
   const [messages, setMessages] = useState(messagesMock);
   const [input, setInput] = useState('');
+  const [isComposing, setIsComposing] = useState(false);
   const chatBodyRef = useRef<HTMLDivElement>(null);
 
   // 예시: userId 0이 나, 1이 상대방
@@ -137,6 +138,12 @@ function ChatDetail() {
     }, 100);
   };
 
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !isComposing) {
+      handleSend();
+    }
+  };
+
   return (
     <Container>
       <Header>
@@ -163,7 +170,9 @@ function ChatDetail() {
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onPressEnter={handleSend}
+          onKeyDown={handleKeyDown}
+          onCompositionStart={() => setIsComposing(true)}
+          onCompositionEnd={() => setIsComposing(false)}
           placeholder="메시지를 입력하세요"
           style={{ marginRight: 8 }}
         />

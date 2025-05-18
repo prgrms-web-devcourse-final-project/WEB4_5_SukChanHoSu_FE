@@ -20,6 +20,7 @@ apiClient.interceptors.request.use(
     //   'eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJvYXV0aC1nb29nbGUtaWQtMTIzNDUiLCJpZCI6NywiZW1haWwiOiJ0ZXN0LWdvb2dsZUBleGFtcGxlLmNvbSIsIm5hbWUiOiLqtazquIDthYzsiqTtirjsgqzsmqnsnpAiLCJyb2xlIjoiVVNFUiIsImlhdCI6MTc0NDQ2Mjc5NywiZXhwIjoxNzQ1NjcyMzk3fQ.jgKHXPG7KKko2E1xemWg_7Vx2YtmvFmoXoLOPQGn9yFpEcB8vvib0EYIVtNjIalzHUOqB8rDIjBXoZULIVNG4A'
     // );
     const token = localStorage.getItem('token');
+    console.log(token);
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }

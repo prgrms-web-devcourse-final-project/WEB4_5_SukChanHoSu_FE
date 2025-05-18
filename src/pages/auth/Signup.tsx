@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom';
 import { useSignup } from '../../hooks/api/auth/useSignup';
 import { SignupRequest } from '../../types/auth';
 import { message } from 'antd';
+import EmailVerification from '../../components/auth/EmailVerification';
+import { useState } from 'react';
 
 type SignupFormValues = {
   email: string;
@@ -70,8 +72,14 @@ const LoginLink = styled.div`
 function Signup() {
   const [form] = Form.useForm();
   const { mutate, isPending } = useSignup();
+  const [emailVerified, setEmailVerified] = useState(true);
 
   const handleSubmit = (values: SignupFormValues) => {
+    console.log('emailVerified', emailVerified);
+    if (!emailVerified) {
+      message.error('이메일 인증을 완료해주세요.');
+      return;
+    }
     const payload: SignupRequest = {
       email: values.email,
       password: values.password,
@@ -83,10 +91,13 @@ function Signup() {
         // 예: navigate('/login');
       },
       onError: (error) => {
+        console.log('error', error);
         message.error(error.message || '회원가입에 실패했습니다.');
       },
     });
   };
+
+  const emailValue = Form.useWatch('email', form);
 
   return (
     <SignupContainer>
@@ -109,6 +120,14 @@ function Signup() {
         >
           <Input placeholder="이메일을 입력하세요" size="large" />
         </Form.Item>
+        <EmailVerification
+          email={emailValue}
+          onVerified={() => setEmailVerified(true)}
+          disabled={
+            !form.isFieldTouched('email') ||
+            !!form.getFieldError('email').length
+          }
+        />
 
         <Form.Item
           name="password"

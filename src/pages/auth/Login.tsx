@@ -1,7 +1,7 @@
-import { useState } from 'react';
 import styled from '@emotion/styled';
 import { Button, Input, Form } from 'antd';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useLogin } from '../../hooks/api/auth/useLogin';
 
 const LoginContainer = styled.div`
   display: flex;
@@ -83,15 +83,15 @@ const SignupLink = styled.div`
 
 function Login() {
   const [form] = Form.useForm();
-  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const loginMutation = useLogin();
 
-  const handleSubmit = (values: { email: string; password: string }) => {
-    setLoading(true);
-    console.log('로그인 시도:', values);
-    // 여기에 로그인 로직 추가
-    setTimeout(() => {
-      setLoading(false);
-    }, 1000);
+  const handleSubmit = (values: unknown) => {
+    loginMutation.mutate(values as { email: string; password: string }, {
+      onSuccess: () => {
+        navigate('/');
+      },
+    });
   };
 
   return (
@@ -100,13 +100,7 @@ function Login() {
         <LoginTitle>로그인</LoginTitle>
         <LoginSubTitle>당신의 영화 취향에 맞는 상대를 찾아보세요</LoginSubTitle>
       </TitleContainer>
-      <LoginForm
-        form={form}
-        onFinish={(values) =>
-          handleSubmit(values as { email: string; password: string })
-        }
-        layout="vertical"
-      >
+      <LoginForm form={form} onFinish={handleSubmit} layout="vertical">
         <Form.Item
           name="email"
           label="이메일"
@@ -127,7 +121,11 @@ function Login() {
         </Form.Item>
 
         <Form.Item>
-          <SubmitButton type="primary" htmlType="submit" loading={loading}>
+          <SubmitButton
+            type="primary"
+            htmlType="submit"
+            loading={loginMutation.isPending}
+          >
             로그인
           </SubmitButton>
         </Form.Item>
