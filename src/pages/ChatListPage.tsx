@@ -1,11 +1,13 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Avatar, Typography, Badge } from 'antd';
+import { Card, Avatar, Typography, Badge, Spin, Alert } from 'antd';
 import { MessageOutlined } from '@ant-design/icons';
 import styled from '@emotion/styled';
 import { useAtomValue } from 'jotai';
-import { chatsAtom, profilesAtom, currentUserIdAtom } from '../store/atoms';
-import { Chat } from '../types';
+import { useQuery } from '@tanstack/react-query';
+import { authAtom } from '../store/atoms';
+import { chatAPI } from '../api/client';
+import { ChatRoom } from '../types';
 
 const { Title, Text } = Typography;
 
@@ -89,11 +91,27 @@ const EmptyState = styled.div`
 
 const ChatListPage: React.FC = () => {
   const navigate = useNavigate();
-  const chats = useAtomValue(chatsAtom);
-  const profiles = useAtomValue(profilesAtom);
-  const currentUserId = useAtomValue(currentUserIdAtom);
+  const auth = useAtomValue(authAtom);
+  const currentUserId = auth.user?.id || '0';
 
-  const formatTime = (timestamp: string) => {
+  // React Query로 채팅룸 데이터 가져오기
+  const {
+    data: chatRooms,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery<ChatRoom[]>({
+    queryKey: ['chatRooms'],
+    queryFn: chatAPI.getChatRooms,
+    enabled: !!auth.isAuthenticated, // 로그인된 경우에만 실행
+    refetchInterval: 30000, // 30초마다 자동 갱신
+  });
+
+  console.log('채팅룸 응답:', chatRooms);
+
+  const formatTime = (timestamp: string | null) => {
+    if (!timestamp) return '';
+
     const date = new Date(timestamp);
     const now = new Date();
     const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
@@ -112,25 +130,57 @@ const ChatListPage: React.FC = () => {
     }
   };
 
-  const getChatPartner = (chat: Chat) => {
-    const partnerId = chat.participants.find(
-      (id: number) => id !== currentUserId
+  const getChatPartnerName = (chatRoom: ChatRoom): string => {
+    // 현재 사용자가 sender인지 receiver인지 확인하여 상대방 이름 반환
+    if (chatRoom.sender === currentUserId) {
+      return `사용자 ${chatRoom.receiver}`;
+    } else {
+      return `사용자 ${chatRoom.sender}`;
+    }
+  };
+
+  const getLastMessage = (chatRoom: ChatRoom) => {
+    if (!chatRoom.lastMessage) return '대화를 시작해보세요';
+    return chatRoom.lastMessage;
+  };
+
+  // 로딩 상태
+  if (isLoading) {
+    return (
+      <ChatListContainer>
+        <Title level={3} style={{ marginBottom: 24, color: '#262626' }}>
+          채팅
+        </Title>
+        <div style={{ textAlign: 'center', padding: '50px 0' }}>
+          <Spin size="large" />
+          <div style={{ marginTop: 16, color: '#8c8c8c' }}>
+            채팅 목록을 불러오는 중...
+          </div>
+        </div>
+      </ChatListContainer>
     );
-    return profiles.find((profile) => profile.id === partnerId);
-  };
+  }
 
-  const getLastMessage = (chat: Chat) => {
-    if (chat.messages.length === 0) return '대화를 시작해보세요';
-    return chat.messages[chat.messages.length - 1].message;
-  };
+  // 에러 상태
+  if (error) {
+    return (
+      <ChatListContainer>
+        <Title level={3} style={{ marginBottom: 24, color: '#262626' }}>
+          채팅
+        </Title>
+        <Alert
+          message="채팅 목록을 불러올 수 없습니다"
+          description="네트워크 연결을 확인하고 다시 시도해주세요."
+          type="error"
+          action={<button onClick={() => refetch()}>다시 시도</button>}
+          style={{ marginBottom: 16 }}
+        />
+      </ChatListContainer>
+    );
+  }
 
-  const getUnreadCount = (chat: Chat) => {
-    return chat.messages.filter(
-      (msg) => msg.receiverId === currentUserId && !msg.isRead
-    ).length;
-  };
-
-  if (chats.length === 0) {
+  // 빈 상태
+  if (!chatRooms || chatRooms.length === 0) {
     return (
       <ChatListContainer>
         <Title level={3} style={{ marginBottom: 24, color: '#262626' }}>
@@ -155,30 +205,37 @@ const ChatListPage: React.FC = () => {
         채팅
       </Title>
 
-      {chats.map((chat) => {
-        const partner = getChatPartner(chat);
-        const lastMessage = getLastMessage(chat);
-        const unreadCount = getUnreadCount(chat);
-
-        if (!partner) return null;
+      {chatRooms.map((chatRoom) => {
+        const partnerName = getChatPartnerName(chatRoom);
+        const lastMessage = getLastMessage(chatRoom);
+        const isUnread = chatRoom.unread;
 
         return (
-          <ChatCard key={chat.id} onClick={() => navigate(`/chat/${chat.id}`)}>
+          <ChatCard
+            key={chatRoom.roomId}
+            onClick={() => navigate(`/chat/${chatRoom.roomId}`)}
+          >
             <ChatContent>
-              <Badge dot={partner.isOnline}>
-                <Avatar src={partner.photo} size={50} />
+              <Badge dot={false}>
+                <Avatar size={50} style={{ backgroundColor: '#1890ff' }}>
+                  {partnerName.charAt(partnerName.length - 1)}
+                </Avatar>
               </Badge>
 
               <ChatInfo>
-                <ChatName>{partner.name}</ChatName>
+                <ChatName>{partnerName}</ChatName>
                 <LastMessage>{lastMessage}</LastMessage>
               </ChatInfo>
 
               <ChatMeta>
-                <ChatTime>{formatTime(chat.updatedAt)}</ChatTime>
-                {unreadCount > 0 && (
+                <ChatTime>
+                  {chatRoom.lastMessageTime
+                    ? formatTime(chatRoom.lastMessageTime)
+                    : ''}
+                </ChatTime>
+                {isUnread && (
                   <Badge
-                    count={unreadCount}
+                    count={1}
                     style={{
                       backgroundColor: '#1890ff',
                       fontSize: '12px',

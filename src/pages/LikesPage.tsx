@@ -92,8 +92,8 @@ const LikesPage: React.FC = () => {
 
   // 탭별 페이지 상태
   const [activeTab, setActiveTab] = useState('received');
-  const [receivedPage, setReceivedPage] = useState(1);
-  const [sentPage, setSentPage] = useState(1);
+  const [receivedPage, setReceivedPage] = useState(0);
+  const [sentPage, setSentPage] = useState(0);
   const pageSize = 10;
 
   // 나를 좋아한 사용자 목록
@@ -166,7 +166,14 @@ const LikesPage: React.FC = () => {
                     />
                   ))}
                 </Row>
-                <div style={{ textAlign: 'center', marginTop: 24 }}>
+                <div
+                  style={{
+                    textAlign: 'center',
+                    marginTop: 24,
+                    display: 'flex',
+                    justifyContent: 'center',
+                  }}
+                >
                   <Pagination
                     current={receivedPage}
                     pageSize={pageSize}
@@ -237,7 +244,14 @@ const LikesPage: React.FC = () => {
                     />
                   ))}
                 </Row>
-                <div style={{ textAlign: 'center', marginTop: 24 }}>
+                <div
+                  style={{
+                    textAlign: 'center',
+                    marginTop: 24,
+                    display: 'flex',
+                    justifyContent: 'center',
+                  }}
+                >
                   <Pagination
                     current={sentPage}
                     pageSize={pageSize}

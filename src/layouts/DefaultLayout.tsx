@@ -1,5 +1,5 @@
 import styled from '@emotion/styled';
-import { Layout, Typography, Badge } from 'antd';
+import { Layout, Typography } from 'antd';
 import {
   SearchOutlined,
   HeartOutlined,
@@ -299,9 +299,7 @@ function DefaultLayout() {
           active={getActiveTab() === 'chat'}
           onClick={() => handleNavClick('chat')}
         >
-          <Badge count={2} size="small">
-            <MessageOutlined />
-          </Badge>
+          <MessageOutlined />
           <span className="nav-label">채팅</span>
         </NavItem>
 

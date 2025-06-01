@@ -32,7 +32,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAtom, useAtomValue } from 'jotai';
 import { signupAtom, authAtom } from '../store/atoms';
 import type { SignupForm, MovieSearchResult } from '../types';
-import { profileAPI, movieAPI } from '../api/client';
+import { profileAPI, movieAPI, emailAPI } from '../api/client';
 
 const { Title, Text, Link } = Typography;
 const { TextArea } = Input;
@@ -67,11 +67,6 @@ const SignupCard = styled(Card)`
 const LogoSection = styled.div`
   text-align: center;
   margin-bottom: 32px;
-`;
-
-const AppLogo = styled.div`
-  font-size: 48px;
-  margin-bottom: 16px;
 `;
 
 const AppTitle = styled(Title)`
@@ -131,7 +126,7 @@ const SignupForm = styled(Form)`
   }
 
   .ant-input {
-    padding: 12px 16px;
+    padding: 8px 16px;
     font-size: 14px;
 
     &:focus {
@@ -291,6 +286,14 @@ const SignupPage: React.FC = () => {
   const [isCheckingNickname, setIsCheckingNickname] = useState(false);
   const [checkedNickname, setCheckedNickname] = useState('');
 
+  // 이메일 인증 관련 상태
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
+  const [isEmailSent, setIsEmailSent] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [isVerifyingCode, setIsVerifyingCode] = useState(false);
+  const [verificationCode, setVerificationCode] = useState('');
+  const [verifiedEmail, setVerifiedEmail] = useState('');
+
   // 영화 검색 관련 상태
   const [searchResults, setSearchResults] = useState<MovieSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -337,6 +340,71 @@ const SignupPage: React.FC = () => {
     setSelectedGenres((prev) =>
       prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre]
     );
+  };
+
+  // 이메일 인증 코드 발송 함수
+  const handleSendVerificationCode = async () => {
+    try {
+      const email = form.getFieldValue('email');
+      if (!email) {
+        message.error('이메일을 먼저 입력해주세요!');
+        return;
+      }
+
+      // 이메일 형식 검증
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        message.error('올바른 이메일 형식이 아닙니다!');
+        return;
+      }
+
+      setIsSendingEmail(true);
+      await emailAPI.sendVerificationCode(email);
+
+      setIsEmailSent(true);
+      setVerifiedEmail(''); // 이전 인증 상태 초기화
+      setIsEmailVerified(false);
+      message.success('인증 코드가 이메일로 전송되었습니다!');
+    } catch {
+      message.error('인증 코드 전송에 실패했습니다. 다시 시도해주세요.');
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
+  // 이메일 인증 코드 검증 함수
+  const handleVerifyCode = async () => {
+    try {
+      const email = form.getFieldValue('email');
+      if (!email || !verificationCode) {
+        message.error('이메일과 인증 코드를 모두 입력해주세요!');
+        return;
+      }
+
+      if (verificationCode.length !== 6) {
+        message.error('인증 코드는 6자리입니다!');
+        return;
+      }
+
+      setIsVerifyingCode(true);
+      await emailAPI.verifyCode(email, verificationCode);
+
+      setIsEmailVerified(true);
+      setVerifiedEmail(email);
+      message.success('이메일 인증이 완료되었습니다!');
+    } catch {
+      message.error('인증 코드가 올바르지 않습니다. 다시 확인해주세요.');
+    } finally {
+      setIsVerifyingCode(false);
+    }
+  };
+
+  // 이메일 입력 변경 시 인증 상태 초기화
+  const handleEmailChange = () => {
+    setIsEmailVerified(false);
+    setIsEmailSent(false);
+    setVerificationCode('');
+    setVerifiedEmail('');
   };
 
   // 닉네임 중복 검사 함수
@@ -424,8 +492,18 @@ const SignupPage: React.FC = () => {
     try {
       if (currentStep === 0) {
         await form.validateFields(['email', 'password', 'confirmPassword']);
+
+        // 이메일 인증 확인
+        const currentEmail = form.getFieldValue('email');
+        if (!isEmailVerified || verifiedEmail !== currentEmail) {
+          message.error('이메일 인증을 완료해주세요!');
+          return;
+        }
+
         setCurrentStep(1);
       } else if (currentStep === 1) {
+        setCurrentStep(2);
+
         await form.validateFields(['nickname', 'age', 'gender']);
 
         // 닉네임 중복 검사 확인
@@ -486,27 +564,37 @@ const SignupPage: React.FC = () => {
   };
 
   const handleSignup = async (values: SignupForm) => {
+    // 사용자가 추가한 로그: onFinish에서 오는 값 확인
+    console.log('values from onFinish:', values);
+
+    // 폼 인스턴스에서 모든 필드 값을 직접 가져옵니다.
+    const allFormValues = form.getFieldsValue(true);
+    console.log('allFormValues from form.getFieldsValue(true):', allFormValues);
+
     if (selectedGenres.length === 0) {
       message.error('최소 1개 이상의 선호 장르를 선택해주세요!');
       return;
     }
+    // console.log('values', values); // 이 로그는 위로 옮겨졌거나, allFormValues 로그로 대체 가능
 
     setIsLoading(true);
     try {
       await signup({
-        email: values.email,
-        password: values.password,
-        nickname: values.nickname,
-        age: values.age,
-        gender: values.gender,
+        email: allFormValues.email,
+        password: allFormValues.password,
+        confirmPassword: allFormValues.confirmPassword,
+        nickname: allFormValues.nickname,
+        age: allFormValues.age,
+        gender: allFormValues.gender,
         favoriteGenres: selectedGenres,
         bestMovie: bestMovie || undefined,
-        bio: values.bio || '',
+        bio: allFormValues.bio || '',
       });
       message.success('회원가입이 완료되었습니다!');
       navigate('/');
-    } catch {
+    } catch (err) {
       message.error('회원가입에 실패했습니다. 다시 시도해주세요.');
+      console.error('Signup Error:', err);
     } finally {
       setIsLoading(false);
     }
@@ -524,12 +612,78 @@ const SignupPage: React.FC = () => {
                 { type: 'email', message: '올바른 이메일 형식이 아닙니다!' },
               ]}
             >
-              <Input
-                prefix={<MailOutlined />}
-                placeholder="이메일"
-                size="large"
-              />
+              <Space.Compact style={{ width: '100%' }}>
+                <Input
+                  prefix={<MailOutlined />}
+                  placeholder="이메일"
+                  size="large"
+                  style={{ flex: 1 }}
+                  onChange={handleEmailChange}
+                />
+                <Button
+                  size="large"
+                  onClick={handleSendVerificationCode}
+                  loading={isSendingEmail}
+                  style={{ height: 'auto' }}
+                >
+                  인증
+                </Button>
+              </Space.Compact>
             </Form.Item>
+
+            {isEmailSent && (
+              <>
+                <Form.Item
+                  name="verificationCode"
+                  rules={[
+                    { required: true, message: '인증 코드를 입력해주세요!' },
+                    { len: 6, message: '인증 코드는 6자리입니다!' },
+                  ]}
+                >
+                  <Space.Compact style={{ width: '100%' }}>
+                    <Input
+                      placeholder="인증 코드 6자리"
+                      size="large"
+                      style={{ flex: 1 }}
+                      value={verificationCode}
+                      onChange={(e) => setVerificationCode(e.target.value)}
+                      maxLength={6}
+                    />
+                    <Button
+                      size="large"
+                      onClick={handleVerifyCode}
+                      loading={isVerifyingCode}
+                      style={{ height: 'auto' }}
+                    >
+                      확인
+                    </Button>
+                  </Space.Compact>
+                </Form.Item>
+
+                <div
+                  style={{
+                    color: isEmailVerified ? '#52c41a' : '#1890ff',
+                    fontSize: '14px',
+                    marginBottom: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}
+                >
+                  {isEmailVerified ? (
+                    <>
+                      <CheckCircleOutlined />
+                      이메일 인증이 완료되었습니다.
+                    </>
+                  ) : (
+                    <>
+                      <CloseCircleOutlined />
+                      이메일로 전송된 6자리 인증 코드를 입력하세요.
+                    </>
+                  )}
+                </div>
+              </>
+            )}
 
             <Form.Item
               name="password"
@@ -801,7 +955,6 @@ const SignupPage: React.FC = () => {
     <SignupContainer>
       <SignupCard>
         <LogoSection>
-          <AppLogo>🎬</AppLogo>
           <AppTitle level={2}>MovieMatch</AppTitle>
           <AppSubtitle>영화로 만나는 새로운 인연</AppSubtitle>
         </LogoSection>

@@ -56,6 +56,79 @@ export interface Chat {
   updatedAt: string;
 }
 
+// 실제 API 응답용 Chat 타입들
+export interface ChatRoom {
+  roomId: string;
+  sender: string;
+  receiver: string;
+  lastMessage: string | null;
+  lastMessageTime: string | null;
+  unread: boolean;
+}
+
+export interface ChatParticipant {
+  userId: number;
+  nickname: string;
+  profileImage?: string;
+  isOnline: boolean;
+}
+
+export interface ChatRoomsResponse {
+  code: string;
+  message: string;
+  data: ChatRoom[];
+}
+
+export interface ChatMessageItem {
+  messageId: number;
+  chatRoomId: string;
+  senderId: number;
+  senderNickname: string;
+  content: string;
+  messageType: 'TEXT' | 'IMAGE' | 'FILE';
+  createdAt: string;
+  isRead: boolean;
+}
+
+export interface ChatMessagesResponse {
+  code: string;
+  message: string;
+  data: ChatMessageItem[];
+}
+
+// WebSocket 메시지 타입들
+export interface WebSocketMessage {
+  type: 'CHAT' | 'JOIN' | 'LEAVE' | 'TYPING';
+  chatRoomId: string;
+  senderId: number;
+  senderNickname: string;
+  content: string;
+  timestamp: string;
+}
+
+export interface WebSocketChatMessage {
+  messageId: number;
+  chatRoomId: string;
+  senderId: number;
+  senderNickname: string;
+  content: string;
+  messageType: 'TEXT' | 'IMAGE' | 'FILE';
+  createdAt: string;
+  isRead: boolean;
+}
+
+export interface StompSubscription {
+  unsubscribe: () => void;
+}
+
+export interface ChatRoomDetails {
+  chatRoomId: string;
+  participants: ChatParticipant[];
+  messages: ChatMessageItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -79,6 +152,7 @@ export interface AuthState {
   isAuthenticated: boolean;
   user: User | null;
   loading: boolean;
+  error: string | null;
 }
 
 export interface LoginForm {
@@ -238,7 +312,7 @@ export interface TasteBasedMatchUser {
 export interface TasteBasedMatchResponse {
   code: string;
   message: string;
-  data: TasteBasedMatchUser[];
+  data: TasteBasedMatchUser;
 }
 
 // 거리 기반 매칭 타입
@@ -255,5 +329,5 @@ export interface LocationBasedMatchUser {
 export interface LocationBasedMatchResponse {
   code: string;
   message: string;
-  data: LocationBasedMatchUser[];
+  data: LocationBasedMatchUser;
 }

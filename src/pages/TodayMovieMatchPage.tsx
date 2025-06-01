@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Typography, Button, Card, Tag, Empty, Spin } from 'antd';
+import { Row, Typography, Button, Card, Tag, Empty, Spin, Modal } from 'antd';
 import {
   ArrowLeftOutlined,
   PlayCircleOutlined,
@@ -8,6 +8,9 @@ import {
 } from '@ant-design/icons';
 import styled from '@emotion/styled';
 import { useNavigate } from 'react-router-dom';
+import { useAtomValue } from 'jotai';
+import { profilesAtom } from '../store/atoms';
+import ProfileCard from '../components/ProfileCard';
 import { movieAPI } from '../api/client';
 import type { BoxOfficeMovie } from '../types';
 
@@ -196,8 +199,23 @@ const WantToWatchCount = styled.div`
   align-self: flex-start;
 `;
 
+type MovieCardType = BoxOfficeMovie & {
+  id?: number;
+  title?: string;
+  genre?: string;
+  runtime?: string;
+  showtime?: string;
+  theater?: string;
+  wantToWatch?: number;
+};
+
 const TodayMovieMatchPage: React.FC = () => {
   const navigate = useNavigate();
+  const profiles = useAtomValue(profilesAtom);
+  const [selectedMovie, setSelectedMovie] = useState<MovieCardType | null>(
+    null
+  );
+  const [isBookmarking, setIsBookmarking] = useState(false);
   const [boxOfficeMovies, setBoxOfficeMovies] = useState<BoxOfficeMovie[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -230,12 +248,15 @@ const TodayMovieMatchPage: React.FC = () => {
   }, []);
 
   // 영화 카드 클릭 시 바로 등록
-  const handleMovieClick = async (movie: BoxOfficeMovie) => {
+  const handleMovieClick = async (movie: MovieCardType) => {
+    setIsBookmarking(true);
     try {
-      await movieAPI.bookmarkMovie(movie.movieCd);
+      await movieAPI.bookmarkMovie(movie.movieCd || movie.id?.toString() || '');
       navigate('/match/movie-wish');
     } catch {
       alert('등록에 실패했습니다. 다시 시도해 주세요.');
+    } finally {
+      setIsBookmarking(false);
     }
   };
 
@@ -258,7 +279,6 @@ const TodayMovieMatchPage: React.FC = () => {
             함께 영화관에서 즐거운 시간을 보내보세요
           </HeroDescription>
         </HeroSection>
-
         <FilterSection>
           <FilterTitle level={4}>오늘 상영 중인 인기 영화</FilterTitle>
           {isLoading ? (
@@ -273,6 +293,16 @@ const TodayMovieMatchPage: React.FC = () => {
               <MovieCard
                 key={movie.movieCd}
                 onClick={() => handleMovieClick(movie)}
+                style={{
+                  borderColor:
+                    selectedMovie?.movieCd === movie.movieCd
+                      ? '#1890ff'
+                      : '#f0f0f0',
+                  backgroundColor:
+                    selectedMovie?.movieCd === movie.movieCd
+                      ? '#f6ffed'
+                      : 'white',
+                }}
               >
                 <MovieInfo>
                   <MovieHeader>
@@ -344,6 +374,15 @@ const TodayMovieMatchPage: React.FC = () => {
             </div>
           )}
         </FilterSection>
+
+        {!selectedMovie && (
+          <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description="보고 싶은 영화를 선택해주세요"
+            />
+          </div>
+        )}
       </ContentContainer>
     </PageContainer>
   );

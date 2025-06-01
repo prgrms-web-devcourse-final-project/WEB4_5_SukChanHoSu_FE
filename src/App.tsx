@@ -1,73 +1,47 @@
-import React from 'react';
-import { Routes, Route, BrowserRouter } from 'react-router-dom';
-import { ConfigProvider } from 'antd';
-import { Provider, useAtomValue } from 'jotai';
-import { authAtom } from './store/atoms';
-import LikesPage from './pages/LikesPage';
-import MatchPage from './pages/MatchPage';
-import TodayMovieMatchPage from './pages/TodayMovieMatchPage';
-import TasteBasedMatchPage from './pages/TasteBasedMatchPage';
-import LocationBasedMatchPage from './pages/LocationBasedMatchPage';
-import ProfileDetailPage from './pages/ProfileDetailPage';
-import ChatDetailPage from './pages/ChatDetailPage';
-import ChatListPage from './pages/ChatListPage';
-import UserProfilePage from './pages/UserProfilePage';
+import React, { useEffect, useState } from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { ConfigProvider, Spin } from 'antd';
+import koKR from 'antd/locale/ko_KR';
+import { Provider } from 'jotai';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import styled from '@emotion/styled';
+
+import { useAtomValue, useAtom } from 'jotai';
+import { authAtom, validateTokenAtom } from './store/atoms';
+
+// 페이지 컴포넌트들
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
+import UserProfilePage from './pages/UserProfilePage';
+import ProfileDetailPage from './pages/ProfileDetailPage';
+import TasteBasedMatchPage from './pages/TasteBasedMatchPage';
+import LocationBasedMatchPage from './pages/LocationBasedMatchPage';
+import LikesPage from './pages/LikesPage';
+import MatchPage from './pages/MatchPage';
+import ChatListPage from './pages/ChatListPage';
+import ChatDetailPage from './pages/ChatDetailPage';
 import DefaultLayout from './layouts/DefaultLayout';
+import TodayMovieMatchPage from './pages/TodayMovieMatchPage';
 import MovieWishMatchPage from './pages/MovieWishMatchPage';
 
-// 깔끔한 화이트 톤 테마 설정
-const cleanWhiteTheme = {
-  token: {
-    colorPrimary: '#1890ff',
-    colorSuccess: '#52c41a',
-    colorWarning: '#faad14',
-    colorError: '#ff4d4f',
-    colorInfo: '#1890ff',
-    borderRadius: 8,
-    fontSize: 14,
-    fontFamily:
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-    colorBgContainer: '#ffffff',
-    colorBgElevated: '#ffffff',
-    colorBorder: '#f0f0f0',
-    colorBorderSecondary: '#f5f5f5',
-    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
-    boxShadowSecondary: '0 1px 4px rgba(0, 0, 0, 0.04)',
-  },
-  components: {
-    Card: {
-      borderRadius: 12,
-      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
-      headerBg: '#ffffff',
-      bodyPadding: 20,
-    },
-    Button: {
-      borderRadius: 8,
-      fontWeight: 500,
-      primaryShadow: '0 2px 4px rgba(24, 144, 255, 0.2)',
-    },
-    Tabs: {
-      inkBarColor: '#1890ff',
-      itemActiveColor: '#1890ff',
-      itemHoverColor: '#40a9ff',
-      itemSelectedColor: '#1890ff',
-    },
-    Tag: {
-      borderRadius: 6,
-      fontWeight: 400,
+// React Query 클라이언트 설정
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
     },
   },
-};
+});
 
-// 인증된 사용자를 위한 메인 앱 컴포넌트
+// 인증된 사용자용 앱
 const AuthenticatedApp: React.FC = () => {
   return (
     <Routes>
       <Route path="/" element={<DefaultLayout />}>
         <Route index element={<MatchPage />} />
-        <Route path="likes" element={<LikesPage />} />
+        <Route path="my-profile" element={<UserProfilePage />} />
+        <Route path="profile/:id" element={<ProfileDetailPage />} />
         <Route path="match" element={<MatchPage />} />
         <Route path="match/today-movie" element={<TodayMovieMatchPage />} />
         <Route path="match/taste-based" element={<TasteBasedMatchPage />} />
@@ -76,20 +50,18 @@ const AuthenticatedApp: React.FC = () => {
           element={<LocationBasedMatchPage />}
         />
         <Route path="match/movie-wish" element={<MovieWishMatchPage />} />
+        <Route path="likes" element={<LikesPage />} />
         <Route path="chats" element={<ChatListPage />} />
-        <Route path="profile/:id" element={<ProfileDetailPage />} />
-        <Route path="my-profile" element={<UserProfilePage />} />
-        <Route path="chat/:chatId" element={<ChatDetailPage />} />
+        <Route path="chat/:roomId" element={<ChatDetailPage />} />
       </Route>
     </Routes>
   );
 };
 
-// 인증되지 않은 사용자를 위한 인증 앱 컴포넌트
+// 비인증 사용자용 앱
 const UnauthenticatedApp: React.FC = () => {
   return (
     <Routes>
-      <Route path="/" element={<LoginPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
       <Route path="*" element={<LoginPage />} />
@@ -97,23 +69,75 @@ const UnauthenticatedApp: React.FC = () => {
   );
 };
 
+// 로딩 화면 스타일
+const LoadingContainer = styled.div`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background: #ffffff;
+`;
+
+const LoadingContent = styled.div`
+  text-align: center;
+  color: white;
+`;
+
 // 메인 앱 라우터 컴포넌트
 const AppRouter: React.FC = () => {
   const auth = useAtomValue(authAtom);
-  console.log(auth);
-  return auth.isAuthenticated ? <AuthenticatedApp /> : <UnauthenticatedApp />;
+  const [, validateToken] = useAtom(validateTokenAtom);
+  const [loading, setLoading] = useState(true);
+
+  // 자동 로그인 처리
+  useEffect(() => {
+    const initializeAuth = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (token) {
+          console.log('토큰 발견, 자동 로그인 시도중...');
+          await validateToken();
+          console.log('자동 로그인 성공');
+        } else {
+          console.log('저장된 토큰이 없음');
+        }
+      } catch (error) {
+        console.error('자동 로그인 실패:', error);
+        // 토큰이 유효하지 않으면 제거
+        localStorage.removeItem('token');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initializeAuth();
+  }, [validateToken]);
+
+  return loading ? (
+    <LoadingContainer>
+      <LoadingContent>
+        <Spin size="large" />
+      </LoadingContent>
+    </LoadingContainer>
+  ) : auth.isAuthenticated ? (
+    <AuthenticatedApp />
+  ) : (
+    <UnauthenticatedApp />
+  );
 };
 
-function App() {
+const App: React.FC = () => {
   return (
-    <ConfigProvider theme={cleanWhiteTheme}>
-      <Provider>
-        <BrowserRouter>
-          <AppRouter />
-        </BrowserRouter>
-      </Provider>
-    </ConfigProvider>
+    <Provider>
+      <QueryClientProvider client={queryClient}>
+        <ConfigProvider locale={koKR}>
+          <Router>
+            <AppRouter />
+          </Router>
+        </ConfigProvider>
+      </QueryClientProvider>
+    </Provider>
   );
-}
+};
 
 export default App;

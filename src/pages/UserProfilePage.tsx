@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   Card,
-  Avatar,
   Typography,
   Button,
   Tag,
@@ -17,6 +16,7 @@ import {
   List,
   Image,
   Spin,
+  Upload,
 } from 'antd';
 import {
   EditOutlined,
@@ -27,14 +27,21 @@ import {
   CameraOutlined,
   SearchOutlined,
   PlusOutlined,
+  LoadingOutlined,
 } from '@ant-design/icons';
 import styled from '@emotion/styled';
-import { useAtom, useAtomValue } from 'jotai';
-import { authAtom, logoutAtom } from '../store/atoms';
+import { useAtom } from 'jotai';
+import { logoutAtom } from '../store/atoms';
 import { useNavigate } from 'react-router-dom';
-import { movieAPI, profileAPI } from '../api/client';
-import { useQuery } from '@tanstack/react-query';
-import type { MovieSearchResult, ProfileResponse } from '../types';
+import { movieAPI, profileAPI, authAPI } from '../api/client';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { MovieSearchResult, ProfileResponse, ProfileData } from '../types';
+import type {
+  UploadChangeParam,
+  UploadFile,
+  UploadProps,
+} from 'antd/es/upload';
+import type { RcFile } from 'antd/es/upload/interface';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -55,30 +62,55 @@ const ProfileHeader = styled.div`
   position: relative;
 `;
 
-const ProfileAvatar = styled.div`
-  position: relative;
-  display: inline-block;
-  margin-bottom: 16px;
+const StyledUpload = styled(Upload)`
+  .ant-upload-select-picture-card,
+  .ant-upload-select-circle {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    margin: auto;
+    background-color: transparent;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .ant-upload.ant-upload-select {
+    display: inline-block;
+  }
 `;
 
-const AvatarUploadButton = styled(Button)`
+const AvatarOverlay = styled.div`
   position: absolute;
   bottom: 0;
   right: 0;
+  background: rgba(255, 255, 255, 0.8);
   border-radius: 50%;
-  width: 32px;
-  padding: 0;
+  padding: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #ffffff;
-  border: 2px solid #ffffff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  border: 1px solid #eee;
+  transition: background 0.3s;
 
   &:hover {
-    background: #f5f5f5;
-    border-color: #f5f5f5;
+    background: rgba(255, 255, 255, 1);
   }
+
+  .anticon-camera {
+    font-size: 16px;
+    color: #333;
+  }
+`;
+
+const ProfileAvatarWrapper = styled.div`
+  position: relative;
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 16px auto;
+  display: inline-block;
 `;
 
 const UserName = styled(Title)`
@@ -256,19 +288,81 @@ const SelectedMoviePreview = styled.div`
 
 const UserProfilePage: React.FC = () => {
   const navigate = useNavigate();
-  const auth = useAtomValue(authAtom);
   const [, logout] = useAtom(logoutAtom);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false);
   const [form] = Form.useForm();
+  const queryClient = useQueryClient();
+  const [uploadingImage, setUploadingImage] = useState(false);
 
-  // react-query로 프로필 데이터 로드
   const { data, isLoading: isLoadingProfile } = useQuery<ProfileResponse>({
     queryKey: ['profile'],
     queryFn: profileAPI.getProfile,
   });
   const profileData = data?.data;
 
-  // 영화 검색 관련 상태
+  const logoutMutation = useMutation({
+    mutationFn: authAPI.logout,
+    onSuccess: () => {
+      localStorage.removeItem('token');
+      queryClient.clear();
+      logout();
+      navigate('/login');
+      message.success('로그아웃되었습니다.');
+    },
+    onError: (error) => {
+      console.error('로그아웃 실패:', error);
+      localStorage.removeItem('token');
+      queryClient.clear();
+      logout();
+      navigate('/login');
+      message.warning('로그아웃 처리되었습니다.');
+    },
+  });
+
+  const updateProfileInfoMutation = useMutation({
+    mutationFn: (profileData: ProfileData) =>
+      profileAPI.updateProfileInfo(profileData),
+    onSuccess: () => {
+      message.success('프로필이 업데이트되었습니다!');
+      setIsEditModalVisible(false);
+      setSelectedMovie(null);
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
+    },
+    onError: (error: Error) => {
+      console.error('프로필 업데이트 실패:', error);
+      message.error('프로필 업데이트에 실패했습니다. 다시 시도해주세요.');
+    },
+  });
+
+  const getBase64 = (file: RcFile): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  const updateProfileImageMutation = useMutation({
+    mutationFn: async (file: RcFile) => {
+      const base64 = await getBase64(file);
+      return profileAPI.updateProfileImage([base64]);
+    },
+    onSuccess: (response) => {
+      console.log(response);
+      message.success('프로필 이미지가 업데이트되었습니다.');
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
+    },
+    onError: (error: Error) => {
+      console.error('프로필 이미지 업데이트 실패:', error);
+      message.error('프로필 이미지 업데이트에 실패했습니다.');
+    },
+    onSettled: () => {
+      setUploadingImage(false);
+    },
+  });
+
   const [isMovieSearchVisible, setIsMovieSearchVisible] = useState(false);
   const [movieSearchQuery, setMovieSearchQuery] = useState('');
   const [movieSearchResults, setMovieSearchResults] = useState<
@@ -280,58 +374,56 @@ const UserProfilePage: React.FC = () => {
   );
 
   const genres = [
-    '로맨스',
-    '액션',
-    '코미디',
-    '드라마',
-    '스릴러',
-    'SF',
-    '판타지',
-    '애니메이션',
-    '공포',
-    '다큐멘터리',
-    '뮤지컬',
-    '범죄',
+    { value: 'ACTION', label: '액션' },
+    { value: 'ADVENTURE', label: '모험' },
+    { value: 'ANIMATION', label: '애니메이션' },
+    { value: 'COMEDY', label: '코미디' },
+    { value: 'CRIME', label: '범죄' },
+    { value: 'DOCUMENTARY', label: '다큐멘터리' },
+    { value: 'DRAMA', label: '드라마' },
+    { value: 'FAMILY', label: '가족' },
+    { value: 'FANTASY', label: '판타지' },
+    { value: 'HISTORY', label: '역사' },
+    { value: 'HORROR', label: '공포' },
+    { value: 'MUSIC', label: '뮤지컬' },
+    { value: 'MYSTERY', label: '미스터리' },
+    { value: 'ROMANCE', label: '로맨스' },
+    { value: 'SCIENCE_FICTION', label: 'SF' },
+    { value: 'TV_MOVIE', label: 'TV 영화' },
+    { value: 'THRILLER', label: '스릴러' },
+    { value: 'WAR', label: '전쟁' },
+    { value: 'WESTERN', label: '서부' },
+    { value: 'UNKNOWN', label: '기타' },
   ];
+  const movieGenres = [...genres];
+  const getGenreLabel = (genreValue: string) =>
+    genres.find((g) => g.value === genreValue)?.label || genreValue;
+  const ageToDate = (age: number): string => {
+    if (!age || age < 18 || age > 100) {
+      return '1990-01-01'; // 기본값
+    }
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth() + 1; // 0-based이므로 +1
+    const currentDay = currentDate.getDate();
 
-  const movieGenres = [
-    '로맨스',
-    '액션',
-    '코미디',
-    '드라마',
-    '스릴러',
-    'SF',
-    '판타지',
-    '애니메이션',
-    '공포',
-    '다큐멘터리',
-    '뮤지컬',
-    '범죄',
-    '가족',
-    '모험',
-    '전쟁',
-    '서부',
-    '느와르',
-  ];
+    const birthYear = currentYear - age;
 
-  // 생년월일로부터 나이 계산
+    // 생년월일을 현재 날짜보다 이전으로 설정하여 정확한 나이가 되도록 함
+    return `${birthYear}-${String(currentMonth).padStart(2, '0')}-${String(
+      currentDay
+    ).padStart(2, '0')}`;
+  };
   const calculateAge = (birthdate: string) => {
+    if (!birthdate) return '';
     const today = new Date();
     const birth = new Date(birthdate);
     let age = today.getFullYear() - birth.getFullYear();
     const monthDiff = today.getMonth() - birth.getMonth();
-
-    if (
-      monthDiff < 0 ||
-      (monthDiff === 0 && today.getDate() < birth.getDate())
-    ) {
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate()))
       age--;
-    }
-
     return age;
   };
-
-  // 성별 변환 함수
   const getGenderText = (gender: string) => {
     switch (gender) {
       case 'Male':
@@ -345,13 +437,11 @@ const UserProfilePage: React.FC = () => {
     }
   };
 
-  // 영화 검색 함수
   const handleMovieSearch = async (query: string) => {
     if (!query.trim()) {
       setMovieSearchResults([]);
       return;
     }
-
     setIsSearching(true);
     try {
       const response = await movieAPI.searchByTitle(query);
@@ -373,53 +463,70 @@ const UserProfilePage: React.FC = () => {
         gender: profileData.gender,
         favoriteGenres: profileData.favoriteGenres,
         bio: profileData.introduce,
-        lifeMovie: profileData.lifeMovie,
+        lifeMovie: profileData.lifeMovie
+          ? { title: profileData.lifeMovie }
+          : undefined,
       });
-
-      // 기존 인생 영화가 있다면 selectedMovie로 설정
       if (profileData.lifeMovie) {
-        setSelectedMovie({
-          movieId: 0, // 임시 ID
-          title: profileData.lifeMovie,
-          description: '',
-          releaseDate: new Date().getFullYear() + '-01-01',
-          director: '',
-          genres: [],
-          genresRaw: '',
-          posterImage: '',
-          rating: '0',
-        });
+        setSelectedMovie({ title: profileData.lifeMovie } as MovieSearchResult);
       }
-
       setIsEditModalVisible(true);
     }
   };
 
   const handleEditSubmit = async () => {
     try {
-      await form.validateFields();
-      // 실제로는 API 호출하여 사용자 정보 업데이트
-      message.success('프로필이 업데이트되었습니다!');
-      setIsEditModalVisible(false);
-      setSelectedMovie(null);
-    } catch {
-      // 유효성 검사 실패
+      const values = await form.validateFields();
+
+      // 폼 데이터를 API 요청 형식에 맞게 변환
+      const updateData: ProfileData = {
+        nickname: values.nickname || profileData?.nickname || '사용자',
+        email: profileData?.email || 'user@example.com',
+        gender: values.gender || profileData?.gender || 'Male',
+        latitude: profileData?.latitude || 37.5665, // 서울 시청 위도
+        longitude: profileData?.longitude || 126.978, // 서울 시청 경도
+        birthdate: values.age
+          ? ageToDate(values.age)
+          : profileData?.birthdate || '1990-01-01',
+        searchRadius: profileData?.searchRadius || 10000, // 10km
+        lifeMovie:
+          selectedMovie?.title ||
+          values.lifeMovie?.title ||
+          profileData?.lifeMovie ||
+          '타이타닉',
+        favoriteGenres:
+          values.favoriteGenres && values.favoriteGenres.length > 0
+            ? values.favoriteGenres
+            : profileData?.favoriteGenres || ['ACTION'],
+        watchedMovies:
+          profileData?.watchedMovies && profileData.watchedMovies.length > 0
+            ? profileData.watchedMovies
+            : ['타이타닉', '어벤져스', '라라랜드'],
+        preferredTheaters:
+          profileData?.preferredTheaters &&
+          profileData.preferredTheaters.length > 0
+            ? profileData.preferredTheaters
+            : ['CGV 강남', '롯데시네마 월드타워', '메가박스 코엑스'],
+        introduce:
+          values.bio ||
+          profileData?.introduce ||
+          '안녕하세요! 영화를 좋아하는 사용자입니다.',
+        profileImages: profileData?.profileImages || [],
+      };
+
+      console.log('전송할 프로필 데이터:', updateData);
+      await updateProfileInfoMutation.mutateAsync(updateData);
+    } catch (errorInfo) {
+      console.log('유효성 검사 실패:', errorInfo);
     }
   };
 
-  const handleLogout = () => {
-    Modal.confirm({
-      title: '로그아웃',
-      content: '정말 로그아웃하시겠습니까?',
-      okText: '로그아웃',
-      cancelText: '취소',
-      onOk: () => {
-        logout();
-        navigate('/login');
-        message.success('로그아웃되었습니다.');
-      },
-    });
+  const handleLogout = () => setIsLogoutModalVisible(true);
+  const handleLogoutConfirm = () => {
+    logoutMutation.mutate();
+    setIsLogoutModalVisible(false);
   };
+  const handleLogoutCancel = () => setIsLogoutModalVisible(false);
 
   const handleMovieSelect = (movie: MovieSearchResult) => {
     setSelectedMovie(movie);
@@ -443,11 +550,44 @@ const UserProfilePage: React.FC = () => {
     setSelectedMovie(null);
   };
 
-  if (!auth.user) {
-    return null;
-  }
+  const beforeUpload = (file: RcFile) => {
+    const isJpgOrPng = file.type === 'image/jpeg' || file.type === 'image/png';
+    if (!isJpgOrPng) {
+      message.error('JPG/PNG 파일만 업로드할 수 있습니다!');
+    }
+    const isLt2M = file.size / 1024 / 1024 < 2;
+    if (!isLt2M) {
+      message.error('이미지 크기는 2MB보다 작아야 합니다!');
+    }
+    return isJpgOrPng && isLt2M;
+  };
 
-  // 로딩 중일 때
+  const handleChange: UploadProps['onChange'] = (
+    info: UploadChangeParam<UploadFile>
+  ) => {
+    if (info.file.status === 'uploading') {
+      setUploadingImage(true);
+      return;
+    }
+    if (info.file.status === 'done') {
+      setUploadingImage(false);
+    }
+    if (info.file.status === 'error') {
+      setUploadingImage(false);
+      message.error(`${info.file.name} 파일 업로드 실패.`);
+    }
+  };
+
+  const customUploadRequest: UploadProps['customRequest'] = async (options) => {
+    const { onSuccess, onError, file } = options;
+    try {
+      await updateProfileImageMutation.mutateAsync(file as RcFile);
+      if (onSuccess) onSuccess(null);
+    } catch (err: unknown) {
+      if (onError) onError(err as Error);
+    }
+  };
+
   if (isLoadingProfile) {
     return (
       <ProfileContainer>
@@ -465,7 +605,6 @@ const UserProfilePage: React.FC = () => {
     );
   }
 
-  // 프로필 데이터가 없을 때
   if (!profileData) {
     return (
       <ProfileContainer>
@@ -473,7 +612,9 @@ const UserProfilePage: React.FC = () => {
           <Text>프로필 정보를 불러올 수 없습니다.</Text>
           <br />
           <Button
-            onClick={() => window.location.reload()}
+            onClick={() =>
+              queryClient.invalidateQueries({ queryKey: ['profile'] })
+            }
             style={{ marginTop: 16 }}
           >
             다시 시도
@@ -483,20 +624,55 @@ const UserProfilePage: React.FC = () => {
     );
   }
 
+  const displayAge = profileData.birthdate
+    ? calculateAge(profileData.birthdate)
+    : '미설정';
+
+  const uploadButton = (
+    <ProfileAvatarWrapper>
+      {!uploadingImage && (
+        <AvatarOverlay>
+          <CameraOutlined />
+        </AvatarOverlay>
+      )}
+      {uploadingImage && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(255,255,255,0.5)',
+            borderRadius: '50%',
+          }}
+        >
+          <LoadingOutlined />
+        </div>
+      )}
+    </ProfileAvatarWrapper>
+  );
+
   return (
     <ProfileContainer>
       <ProfileHeader>
-        <ProfileAvatar>
-          <Avatar
-            size={80}
-            src={profileData.profileImages?.[0]}
-            icon={<UserOutlined />}
-          />
-          <AvatarUploadButton icon={<CameraOutlined />} size="small" />
-        </ProfileAvatar>
+        <StyledUpload
+          name="profileImage"
+          listType="picture-circle"
+          showUploadList={false}
+          beforeUpload={beforeUpload}
+          onChange={handleChange}
+          customRequest={customUploadRequest}
+        >
+          {uploadButton}
+        </StyledUpload>
         <UserName level={3}>{profileData.nickname}</UserName>
         <UserInfo>
-          @{profileData.nickname} • {calculateAge(profileData.birthdate)}세
+          @{profileData.nickname} • {displayAge}
+          {displayAge !== '미설정' ? '세' : ''}
         </UserInfo>
       </ProfileHeader>
 
@@ -534,8 +710,8 @@ const UserProfilePage: React.FC = () => {
       >
         <InfoLabel>선호 장르</InfoLabel>
         <GenreTagsContainer>
-          {profileData.favoriteGenres.map((genre) => (
-            <GenreTag key={genre}>{genre}</GenreTag>
+          {profileData.favoriteGenres.map((genre: string) => (
+            <GenreTag key={genre}>{getGenreLabel(genre)}</GenreTag>
           ))}
         </GenreTagsContainer>
 
@@ -577,12 +753,13 @@ const UserProfilePage: React.FC = () => {
           danger
           icon={<LogoutOutlined />}
           onClick={handleLogout}
+          loading={logoutMutation.isPending}
+          disabled={logoutMutation.isPending}
         >
           로그아웃
         </LogoutButton>
       </ActionButtons>
 
-      {/* 프로필 편집 모달 */}
       <Modal
         title="프로필 편집"
         open={isEditModalVisible}
@@ -591,6 +768,7 @@ const UserProfilePage: React.FC = () => {
         okText="저장"
         cancelText="취소"
         width={600}
+        confirmLoading={updateProfileInfoMutation.isPending}
       >
         <Form form={form} layout="vertical" style={{ marginTop: 20 }}>
           <Form.Item
@@ -603,7 +781,6 @@ const UserProfilePage: React.FC = () => {
           >
             <Input placeholder="닉네임" />
           </Form.Item>
-
           <Form.Item
             name="age"
             label="나이"
@@ -624,7 +801,6 @@ const UserProfilePage: React.FC = () => {
               max={100}
             />
           </Form.Item>
-
           <Form.Item
             name="gender"
             label="성별"
@@ -636,7 +812,6 @@ const UserProfilePage: React.FC = () => {
               <Radio.Button value="Other">기타</Radio.Button>
             </Radio.Group>
           </Form.Item>
-
           <Form.Item
             name="favoriteGenres"
             label="선호 장르"
@@ -650,13 +825,12 @@ const UserProfilePage: React.FC = () => {
               style={{ width: '100%' }}
             >
               {genres.map((genre) => (
-                <Option key={genre} value={genre}>
-                  {genre}
+                <Option key={genre.value} value={genre.value}>
+                  {genre.label}
                 </Option>
               ))}
             </Select>
           </Form.Item>
-
           <Form.Item name="bio" label="자기소개">
             <TextArea
               placeholder="간단한 자기소개를 작성해주세요"
@@ -665,9 +839,7 @@ const UserProfilePage: React.FC = () => {
               showCount
             />
           </Form.Item>
-
           <Divider>최고의 영화 (선택사항)</Divider>
-
           <div style={{ marginBottom: 16 }}>
             <Button
               type="dashed"
@@ -678,8 +850,6 @@ const UserProfilePage: React.FC = () => {
               영화 검색하여 추가
             </Button>
           </div>
-
-          {/* 선택된 영화 미리보기 */}
           {selectedMovie && (
             <SelectedMoviePreview>
               <div style={{ flexShrink: 0 }}>
@@ -720,7 +890,7 @@ const UserProfilePage: React.FC = () => {
                 <div>
                   {selectedMovie.genres.map((genre) => (
                     <Tag key={genre} style={{ marginRight: 4 }}>
-                      {genre}
+                      {getGenreLabel(genre)}
                     </Tag>
                   ))}
                 </div>
@@ -745,30 +915,30 @@ const UserProfilePage: React.FC = () => {
               </Button>
             </SelectedMoviePreview>
           )}
-
           <Form.Item name={['lifeMovie', 'title']} label="영화 제목">
-            <Input placeholder="예: 라라랜드" />
+            <Input placeholder="예: 라라랜드" disabled={!!selectedMovie} />
           </Form.Item>
-
           <Form.Item name={['lifeMovie', 'year']} label="개봉년도">
             <InputNumber
               placeholder="예: 2016"
               style={{ width: '100%' }}
               min={1900}
               max={new Date().getFullYear()}
+              disabled={!!selectedMovie}
             />
           </Form.Item>
-
           <Form.Item name={['lifeMovie', 'genre']} label="장르">
-            <Select placeholder="장르를 선택해주세요">
+            <Select
+              placeholder="장르를 선택해주세요"
+              disabled={!!selectedMovie}
+            >
               {movieGenres.map((genre) => (
-                <Option key={genre} value={genre}>
-                  {genre}
+                <Option key={genre.value} value={genre.value}>
+                  {genre.label}
                 </Option>
               ))}
             </Select>
           </Form.Item>
-
           <Form.Item name={['lifeMovie', 'reason']} label="선택 이유">
             <TextArea
               placeholder="이 영화가 왜 당신에게 특별한지 알려주세요..."
@@ -780,7 +950,6 @@ const UserProfilePage: React.FC = () => {
         </Form>
       </Modal>
 
-      {/* 영화 검색 모달 */}
       <Modal
         title={
           <Space>
@@ -807,7 +976,6 @@ const UserProfilePage: React.FC = () => {
             size="large"
           />
         </div>
-
         <MobileMovieItem>
           <div style={{ maxHeight: 400, overflowY: 'auto' }}>
             {isSearching ? (
@@ -874,7 +1042,7 @@ const UserProfilePage: React.FC = () => {
                           <div style={{ marginTop: 4 }}>
                             {movie.genres.map((genre) => (
                               <Tag key={genre} style={{ marginRight: 4 }}>
-                                {genre}
+                                {getGenreLabel(genre)}
                               </Tag>
                             ))}
                           </div>
@@ -912,6 +1080,28 @@ const UserProfilePage: React.FC = () => {
             )}
           </div>
         </MobileMovieItem>
+      </Modal>
+      <Modal
+        title="로그아웃"
+        open={isLogoutModalVisible}
+        onOk={handleLogoutConfirm}
+        onCancel={handleLogoutCancel}
+        okText="로그아웃"
+        cancelText="취소"
+        centered
+        confirmLoading={logoutMutation.isPending}
+      >
+        <div style={{ padding: '20px 0', textAlign: 'center' }}>
+          <LogoutOutlined
+            style={{ fontSize: 48, color: '#ff4d4f', marginBottom: 16 }}
+          />
+          <div style={{ fontSize: 16, marginBottom: 8 }}>
+            정말 로그아웃하시겠습니까?
+          </div>
+          <div style={{ fontSize: 14, color: '#8c8c8c' }}>
+            로그아웃하면 다시 로그인해야 합니다.
+          </div>
+        </div>
       </Modal>
     </ProfileContainer>
   );

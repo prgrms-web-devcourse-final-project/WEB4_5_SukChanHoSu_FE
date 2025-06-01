@@ -3,12 +3,17 @@ import { Form, Input, Button, Typography, Card, message, Divider } from 'antd';
 import { LockOutlined, MailOutlined } from '@ant-design/icons';
 import styled from '@emotion/styled';
 import { useNavigate } from 'react-router-dom';
-import { useAtom, useAtomValue } from 'jotai';
-import { loginAtom, authAtom } from '../store/atoms';
-import type { LoginForm } from '../types';
+import { useAtom } from 'jotai';
+import { authAtom } from '../store/atoms';
 import { authAPI } from '../api/client';
+import type { User } from '../types';
 
-const { Title, Text, Link } = Typography;
+const { Title, Text, Link: AntLink } = Typography;
+
+type LoginForm = {
+  email: string;
+  password: string;
+};
 
 const LoginContainer = styled.div`
   min-height: 100vh;
@@ -120,7 +125,7 @@ const SignupText = styled(Text)`
   font-size: 14px;
 `;
 
-const SignupLink = styled(Link)`
+const SignupLink = styled(AntLink)`
   &.ant-typography {
     color: #1890ff;
     font-weight: 600;
@@ -153,28 +158,53 @@ const DemoCredentials = styled.div`
 `;
 
 const LoginPage: React.FC = () => {
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const [form] = Form.useForm();
-  const [, loginAction] = useAtom(loginAtom);
-  const auth = useAtomValue(authAtom);
-  const [isLoading, setIsLoading] = useState(false);
+  const [, setAuthState] = useAtom(authAtom);
 
   const handleLogin = async (values: LoginForm) => {
     setIsLoading(true);
     try {
-      // 실제 로그인 API 호출
       const response = await authAPI.login(values.email, values.password);
+      console.log(response);
       // 토큰이 응답에 포함되어 있다면 localStorage에 저장
-      if (response.data.accessToken) {
+      if (response.data?.accessToken) {
         localStorage.setItem('token', response.data.accessToken);
-        console.log(response.data.accessToken);
+        console.log('로그인 성공, 토큰 저장됨');
+
+        message.success('로그인 성공!');
+
+        // 사용자 정보를 User 타입에 맞게 변환
+        let userData: User | null = null;
+        if (response.data.user) {
+          const user = response.data.user;
+          userData = {
+            id: user.id?.toString() || '',
+            email: user.email || values.email,
+            name: user.nickname || user.name || '사용자',
+            nickname: user.nickname || user.name || '',
+            profileImage: user.profileImage || undefined,
+            bio: user.bio || '',
+            age: user.age || 0,
+            gender: user.gender || 'other',
+            favoriteGenres: user.favoriteGenres || [],
+            bestMovie: user.bestMovie || undefined,
+          };
+        }
+
+        // 인증 상태 업데이트
+        setAuthState({
+          isAuthenticated: true,
+          user: userData,
+          loading: false,
+          error: null,
+        });
+
+        navigate('/');
+      } else {
+        throw new Error('토큰을 받지 못했습니다.');
       }
-
-      // 기존 로그인 atom도 호출 (상태 관리용)
-      await loginAction({ email: values.email, password: values.password });
-
-      message.success('로그인 성공!');
-      navigate('/');
     } catch (error: unknown) {
       console.error('로그인 에러:', error);
 
@@ -198,7 +228,7 @@ const LoginPage: React.FC = () => {
 
   const handleDemoLogin = () => {
     form.setFieldsValue({
-      email: 'initUser2@example.com',
+      email: 'initUser10@example.com',
       password: 'testPassword123!',
     });
   };
@@ -214,7 +244,7 @@ const LoginPage: React.FC = () => {
         <DemoSection>
           <DemoTitle>체험용 계정</DemoTitle>
           <DemoCredentials>
-            이메일: initUser2@example.com
+            이메일: initUser10@example.com
             <br />
             비밀번호: testPassword123!
             <Button
@@ -260,11 +290,7 @@ const LoginPage: React.FC = () => {
           </Form.Item>
 
           <Form.Item>
-            <LoginButton
-              type="primary"
-              htmlType="submit"
-              loading={isLoading || auth.loading}
-            >
+            <LoginButton type="primary" htmlType="submit" loading={isLoading}>
               로그인
             </LoginButton>
           </Form.Item>

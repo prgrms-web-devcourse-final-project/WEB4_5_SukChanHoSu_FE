@@ -111,7 +111,7 @@ const LocationBasedMatchPage: React.FC = () => {
     queryKey: ['location-based-matches'],
     queryFn: matchingAPI.getLocationBasedMatches,
   });
-  const matches: LocationBasedMatchUser[] = data?.data || [];
+  const matches: LocationBasedMatchUser | null = data?.data || null;
 
   return (
     <PageContainer>
@@ -136,7 +136,7 @@ const LocationBasedMatchPage: React.FC = () => {
         <ResultsSection>
           <ResultsTitle level={4}>
             <RadarChartOutlined style={{ marginRight: 8 }} />
-            거리 기반 사용자 ({matches.length}명)
+            거리 기반 사용자 ({matches === null ? 0 : 1}명)
           </ResultsTitle>
 
           {isLoading ? (
@@ -147,28 +147,26 @@ const LocationBasedMatchPage: React.FC = () => {
             <div style={{ textAlign: 'center', padding: '40px 20px' }}>
               <Empty description="매칭 정보를 불러오지 못했습니다." />
             </div>
-          ) : matches.length > 0 ? (
+          ) : matches != null ? (
             <Row gutter={[16, 16]}>
-              {matches.map((profile) => (
-                <ProfileCard
-                  key={profile.userId}
-                  profile={{
-                    id: profile.userId,
-                    name: profile.nickName,
-                    age: 0,
-                    location: '',
-                    job: '',
-                    favoriteMovies: [],
-                    photo: profile.profileImages?.[0] || '',
-                    isOnline: false,
-                    lastSeen: '',
-                    bio: profile.introduce,
-                    distance: profile.distance,
-                    introduction: profile.introduce,
-                  }}
-                  onCardClick={() => navigate(`/profile/${profile.userId}`)}
-                />
-              ))}
+              <ProfileCard
+                key={matches.userId}
+                profile={{
+                  id: matches.userId,
+                  name: matches.nickName,
+                  age: 0,
+                  location: '',
+                  job: '',
+                  favoriteMovies: [],
+                  photo: matches.profileImages?.[0] || '',
+                  isOnline: false,
+                  lastSeen: '',
+                  bio: matches.introduce,
+                  distance: matches.distance,
+                  introduction: matches.introduce,
+                }}
+                onCardClick={() => navigate(`/profile/${matches.userId}`)}
+              />
             </Row>
           ) : (
             <div style={{ textAlign: 'center', padding: '40px 20px' }}>

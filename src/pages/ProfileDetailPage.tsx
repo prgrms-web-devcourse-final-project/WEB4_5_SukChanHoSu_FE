@@ -1,25 +1,20 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Typography, Tag, Button } from 'antd';
+import { Card, Typography, Tag, Button, Spin, Alert, message } from 'antd';
 import {
   ArrowLeftOutlined,
   HeartOutlined,
   HeartFilled,
   MessageOutlined,
   UserOutlined,
-  EnvironmentOutlined,
   CalendarOutlined,
   TrophyOutlined,
 } from '@ant-design/icons';
 import styled from '@emotion/styled';
-import { useAtom, useAtomValue } from 'jotai';
-import {
-  profilesAtom,
-  handleLikeAtom,
-  handleUnlikeAtom,
-  isLikedAtom,
-  chatsAtom,
-} from '../store/atoms';
+import { useAtomValue } from 'jotai';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { authAtom } from '../store/atoms';
+import { profileAPI, userAPI, chatAPI } from '../api/client';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -118,15 +113,6 @@ const ProfileName = styled(Title)`
     color: #262626;
     text-align: center;
   }
-`;
-
-const ProfileAge = styled(Text)`
-  font-size: 18px;
-  color: #8c8c8c;
-  font-weight: 400;
-  display: block;
-  text-align: center;
-  margin-bottom: 16px;
 `;
 
 const ActionButtons = styled.div`
@@ -271,22 +257,6 @@ const BestMovieContent = styled.div`
   }
 `;
 
-const BestMoviePoster = styled.img`
-  width: 120px;
-  height: 180px;
-  object-fit: cover;
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  flex-shrink: 0;
-  border: 2px solid #ffd666;
-
-  @media (max-width: 480px) {
-    width: 100px;
-    height: 150px;
-    align-self: center;
-  }
-`;
-
 const BestMovieDetails = styled.div`
   flex: 1;
   min-width: 0;
@@ -313,83 +283,155 @@ const BestMovieTitle = styled(Title)`
   }
 `;
 
-const BestMovieInfo = styled.div`
-  display: flex;
-  gap: 16px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-`;
-
-const BestMovieDetail = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #8c6e00;
-  font-size: 14px;
-  font-weight: 500;
-
-  &:not(:last-child)::after {
-    content: '•';
-    margin-left: 10px;
-    color: #d48806;
-  }
-`;
-
-const BestMovieReason = styled(Paragraph)`
-  &.ant-typography {
-    margin: 12px 0 0 0 !important;
-    font-size: 15px !important;
-    line-height: 1.6 !important;
-    color: #595959;
-    font-style: italic;
-    padding: 12px;
-    background: rgba(255, 255, 255, 0.6);
-    border-radius: 8px;
-    border-left: 3px solid #fa8c16;
-  }
-`;
-
 const ProfileDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const profiles = useAtomValue(profilesAtom);
-  const chats = useAtomValue(chatsAtom);
-  const [, handleLike] = useAtom(handleLikeAtom);
-  const [, handleUnlike] = useAtom(handleUnlikeAtom);
-  const isLiked = useAtomValue(isLikedAtom);
+  const queryClient = useQueryClient();
+  const auth = useAtomValue(authAtom);
+  const currentUserId = auth.user?.id || '';
 
-  const profile = profiles.find((p) => p.id === Number(id));
+  const [isLiked, setIsLiked] = useState(false);
 
-  if (!profile) {
+  const {
+    data: profileResponse,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ['profile-detail', id],
+    queryFn: () => profileAPI.getProfileDetail(id!),
+    enabled: !!id,
+    retry: 1,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const likeMutation = useMutation({
+    mutationFn: (toUserId: number) => userAPI.likeUser(toUserId),
+    onSuccess: () => {
+      setIsLiked(true);
+      message.success('좋아요를 보냈습니다! 💕');
+      queryClient.invalidateQueries({ queryKey: ['liked-users'] });
+      queryClient.invalidateQueries({ queryKey: ['liked-me-users'] });
+    },
+    onError: (error) => {
+      console.error('좋아요 실패:', error);
+      message.error('좋아요에 실패했습니다. 다시 시도해주세요.');
+    },
+  });
+
+  const unlikeMutation = useMutation({
+    mutationFn: (toUserId: number) => userAPI.unlikeUser(toUserId),
+    onSuccess: () => {
+      setIsLiked(false);
+      message.success('좋아요를 취소했습니다.');
+      queryClient.invalidateQueries({ queryKey: ['liked-users'] });
+      queryClient.invalidateQueries({ queryKey: ['liked-me-users'] });
+    },
+    onError: (error) => {
+      console.error('좋아요 취소 실패:', error);
+      message.error('좋아요 취소에 실패했습니다. 다시 시도해주세요.');
+    },
+  });
+
+  const createChatRoomMutation = useMutation({
+    mutationFn: ({ sender, receiver }: { sender: string; receiver: string }) =>
+      chatAPI.createChatRoom(sender, receiver),
+    onSuccess: (chatRoom) => {
+      console.log('채팅방 생성 성공:', chatRoom);
+      message.success('채팅방이 생성되었습니다!');
+      navigate(`/chat/${chatRoom.roomId}`);
+    },
+    onError: (error) => {
+      console.error('채팅방 생성 실패:', error);
+      message.error('채팅방 생성에 실패했습니다.');
+    },
+  });
+
+  const profileData = profileResponse?.data;
+
+  const getGenderText = (gender: string): string => {
+    switch (gender.toLowerCase()) {
+      case 'male':
+        return '남성';
+      case 'female':
+        return '여성';
+      default:
+        return '기타';
+    }
+  };
+
+  const handleChatClick = () => {
+    if (!id || !currentUserId) {
+      console.log('id', id);
+      console.log('currentUserId', currentUserId);
+      console.log('사용자 정보를 불러올 수 없습니다.');
+      message.error('사용자 정보를 불러올 수 없습니다.');
+      return;
+    }
+    createChatRoomMutation.mutate({
+      sender: currentUserId,
+      receiver: id,
+    });
+  };
+
+  const handleLikeClick = () => {
+    if (!id) return;
+    const toUserId = Number(id);
+    if (isLiked) {
+      unlikeMutation.mutate(toUserId);
+    } else {
+      likeMutation.mutate(toUserId);
+    }
+  };
+
+  if (isLoading) {
     return (
       <DetailContainer>
-        <div style={{ padding: '40px', textAlign: 'center' }}>
-          <Title level={3}>프로필을 찾을 수 없습니다</Title>
-          <Button onClick={() => navigate(-1)}>돌아가기</Button>
+        <CustomHeader>
+          <HeaderBackButton
+            icon={<ArrowLeftOutlined />}
+            onClick={() => navigate(-1)}
+          />
+          <HeaderTitle>프로필</HeaderTitle>
+        </CustomHeader>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            height: '50vh',
+            marginTop: '80px',
+          }}
+        >
+          <Spin size="large" />
         </div>
       </DetailContainer>
     );
   }
 
-  // 해당 사용자와의 채팅 찾기
-  const findChatWithUser = (userId: number) => {
-    return chats.find(
-      (chat) =>
-        chat.participants.includes(1) && chat.participants.includes(userId)
+  if (error || !profileData) {
+    return (
+      <DetailContainer>
+        <CustomHeader>
+          <HeaderBackButton
+            icon={<ArrowLeftOutlined />}
+            onClick={() => navigate(-1)}
+          />
+          <HeaderTitle>프로필</HeaderTitle>
+        </CustomHeader>
+        <div style={{ padding: '40px 16px', marginTop: '80px' }}>
+          <Alert
+            message="프로필을 불러올 수 없습니다"
+            description={error?.message || '프로필 정보를 찾을 수 없습니다.'}
+            type="error"
+            showIcon
+            action={<Button onClick={() => navigate(-1)}>돌아가기</Button>}
+          />
+        </div>
+      </DetailContainer>
     );
-  };
+  }
 
-  const handleChatClick = () => {
-    if (!profile) return;
-
-    const existingChat = findChatWithUser(profile.id);
-    if (existingChat) {
-      navigate(`/chat/${existingChat.id}`);
-    } else {
-      // 새 채팅 생성 로직 (여기서는 기존 채팅으로만 이동)
-      console.log('새 채팅 생성 필요');
-    }
-  };
+  const profileImage = 'https://placehold.co/200x200';
 
   return (
     <DetailContainer>
@@ -402,123 +444,124 @@ const ProfileDetailPage: React.FC = () => {
       </CustomHeader>
 
       <HeaderSection>
-        <ProfileImage src={profile.photo} alt={profile.name} />
+        <ProfileImage src={profileImage} alt={profileData.nickname} />
       </HeaderSection>
 
       <ContentSection>
         <ProfileCard>
-          <ProfileName level={2}>{profile.name}</ProfileName>
-          <ProfileAge>{profile.age}세</ProfileAge>
+          <ProfileName level={2}>{profileData.nickname}</ProfileName>
 
           <ActionButtons>
             <LikeButton
-              liked={isLiked(profile.id)}
-              icon={isLiked(profile.id) ? <HeartFilled /> : <HeartOutlined />}
-              onClick={() =>
-                isLiked(profile.id)
-                  ? handleUnlike(profile.id)
-                  : handleLike(profile.id)
-              }
+              liked={isLiked}
+              icon={isLiked ? <HeartFilled /> : <HeartOutlined />}
+              onClick={handleLikeClick}
+              loading={likeMutation.isPending || unlikeMutation.isPending}
+              disabled={likeMutation.isPending || unlikeMutation.isPending}
             >
-              {isLiked(profile.id) ? '좋아요 취소' : '좋아요'}
+              {isLiked ? '좋아요 취소' : '좋아요'}
             </LikeButton>
-            <ChatButton icon={<MessageOutlined />} onClick={handleChatClick}>
+            <ChatButton
+              icon={<MessageOutlined />}
+              onClick={handleChatClick}
+              loading={createChatRoomMutation.isPending}
+              disabled={createChatRoomMutation.isPending}
+            >
               메시지 보내기
             </ChatButton>
           </ActionButtons>
 
           <InfoSection>
             <InfoItem>
-              <EnvironmentOutlined />
-              <Text strong>위치:</Text>
-              <Text>{profile.location}</Text>
-            </InfoItem>
-            <InfoItem>
               <UserOutlined />
-              <Text strong>직업:</Text>
-              <Text>{profile.job}</Text>
+              <Text strong>성별:</Text>
+              <Text>{getGenderText(profileData.gender)}</Text>
             </InfoItem>
             <InfoItem>
               <CalendarOutlined />
-              <Text strong>상태:</Text>
-              <Text style={{ color: profile.isOnline ? '#52c41a' : '#8c8c8c' }}>
-                {profile.isOnline ? '온라인' : profile.lastSeen}
-              </Text>
+              <Text strong>거리:</Text>
+              <Text>{profileData.searchRadius}km</Text>
             </InfoItem>
           </InfoSection>
 
-          {profile.bio && (
+          {profileData.introduce && (
             <div style={{ marginBottom: '24px' }}>
               <Title level={4} style={{ marginBottom: '12px' }}>
                 자기소개
               </Title>
               <Paragraph style={{ fontSize: '16px', lineHeight: '1.6' }}>
-                {profile.bio}
+                {profileData.introduce}
               </Paragraph>
             </div>
           )}
 
-          <MovieSection>
-            <Title level={4} style={{ marginBottom: '12px' }}>
-              좋아하는 영화
-            </Title>
-            <MovieTags>
-              {profile.favoriteMovies.map((movie) => (
-                <MovieTag key={movie}>{movie}</MovieTag>
-              ))}
-            </MovieTags>
-          </MovieSection>
+          {profileData.favoriteGenres &&
+            profileData.favoriteGenres.length > 0 && (
+              <MovieSection>
+                <Title level={4} style={{ marginBottom: '12px' }}>
+                  선호하는 장르
+                </Title>
+                <MovieTags>
+                  {profileData.favoriteGenres.map(
+                    (genre: string, index: number) => (
+                      <MovieTag key={index}>{genre}</MovieTag>
+                    )
+                  )}
+                </MovieTags>
+              </MovieSection>
+            )}
 
-          {profile.bestMovie && (
+          {profileData.lifeMovie && (
             <div style={{ marginTop: '24px' }}>
               <Title level={4} style={{ marginBottom: '12px' }}>
-                최고의 영화
+                인생 영화
               </Title>
               <BestMovieCard>
                 <BestMovieContent>
-                  <BestMoviePoster
-                    src={profile.bestMovie.posterUrl}
-                    alt={`${profile.bestMovie.title} 포스터`}
-                  />
-
                   <BestMovieDetails>
                     <BestMovieHeader>
                       <TrophyOutlined />
                       <BestMovieTitle level={5}>
-                        {profile.bestMovie.title}
+                        {profileData.lifeMovie}
                       </BestMovieTitle>
                     </BestMovieHeader>
-
-                    <BestMovieInfo>
-                      <BestMovieDetail>
-                        {profile.bestMovie.year}년
-                      </BestMovieDetail>
-                      <BestMovieDetail>
-                        {profile.bestMovie.genre}
-                      </BestMovieDetail>
-                    </BestMovieInfo>
-
-                    <BestMovieReason>
-                      "{profile.bestMovie.reason}"
-                    </BestMovieReason>
                   </BestMovieDetails>
                 </BestMovieContent>
               </BestMovieCard>
             </div>
           )}
 
-          {profile.interests && profile.interests.length > 0 && (
-            <div style={{ marginTop: '24px' }}>
-              <Title level={4} style={{ marginBottom: '12px' }}>
-                관심사
-              </Title>
-              <InterestTags>
-                {profile.interests.map((interest) => (
-                  <InterestTag key={interest}>{interest}</InterestTag>
-                ))}
-              </InterestTags>
-            </div>
-          )}
+          {profileData.watchedMovies &&
+            profileData.watchedMovies.length > 0 && (
+              <div style={{ marginTop: '24px' }}>
+                <Title level={4} style={{ marginBottom: '12px' }}>
+                  본 영화들
+                </Title>
+                <InterestTags>
+                  {profileData.watchedMovies.map(
+                    (movie: string, index: number) => (
+                      <InterestTag key={index}>{movie}</InterestTag>
+                    )
+                  )}
+                </InterestTags>
+              </div>
+            )}
+
+          {profileData.preferredTheaters &&
+            profileData.preferredTheaters.length > 0 && (
+              <div style={{ marginTop: '24px' }}>
+                <Title level={4} style={{ marginBottom: '12px' }}>
+                  선호하는 극장
+                </Title>
+                <InterestTags>
+                  {profileData.preferredTheaters.map(
+                    (theater: string, index: number) => (
+                      <InterestTag key={index}>{theater}</InterestTag>
+                    )
+                  )}
+                </InterestTags>
+              </div>
+            )}
         </ProfileCard>
       </ContentSection>
     </DetailContainer>

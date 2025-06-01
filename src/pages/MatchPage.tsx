@@ -181,21 +181,6 @@ const CardDescription = styled(Text)`
   margin-bottom: 16px;
 `;
 
-const CardStats = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-top: 16px;
-`;
-
-const StatItem = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: #8c8c8c;
-`;
-
 const ArrowIcon = styled(RightOutlined)`
   font-size: 16px;
   color: #bfbfbf;
@@ -225,7 +210,6 @@ const MatchPage: React.FC = () => {
         '같은 영화를 보고 싶어하는 사람들과 매칭되어 함께 영화를 즐겨보세요',
       icon: <PlayCircleOutlined />,
       bgColor: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      stats: { active: '24명', today: '8건' },
       path: '/match/today-movie',
     },
     {
@@ -235,7 +219,6 @@ const MatchPage: React.FC = () => {
         '비슷한 영화 취향을 가진 사람들과 연결되어 새로운 인연을 만나보세요',
       icon: <HeartOutlined />,
       bgColor: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-      stats: { active: '156명', today: '23건' },
       path: '/match/taste-based',
     },
     {
@@ -245,7 +228,6 @@ const MatchPage: React.FC = () => {
         '내 주변에 있는 사람들과 매칭되어 실제로 만날 수 있는 기회를 만들어보세요',
       icon: <EnvironmentOutlined />,
       bgColor: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-      stats: { active: '89명', today: '15건' },
       path: '/match/location-based',
     },
   ];
@@ -288,16 +270,6 @@ const MatchPage: React.FC = () => {
                   </CardIcon>
                   <CardTitle level={4}>{category.title}</CardTitle>
                   <CardDescription>{category.description}</CardDescription>
-                  <CardStats>
-                    <StatItem>
-                      <span>활성 사용자</span>
-                      <strong>{category.stats.active}</strong>
-                    </StatItem>
-                    <StatItem>
-                      <span>오늘 매칭</span>
-                      <strong>{category.stats.today}</strong>
-                    </StatItem>
-                  </CardStats>
                 </CardContent>
                 <ArrowIcon />
               </CardHeader>

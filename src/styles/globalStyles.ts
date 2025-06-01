@@ -321,4 +321,8 @@ export default css`
   .ant-modal-close-x {
     color: black;
   }
+
+  .ant-modal-wrap {
+    top: -66px !important;
+  }
 `;

@@ -1,8 +1,17 @@
 import React from 'react';
-import { Card, Col, Typography, Tag, Badge } from 'antd';
-import { UserOutlined, EnvironmentOutlined } from '@ant-design/icons';
+import { Card, Col, Typography, Tag, Badge, Button, message } from 'antd';
+import {
+  UserOutlined,
+  EnvironmentOutlined,
+  MessageOutlined,
+} from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
+import { useMutation } from '@tanstack/react-query';
+import { useAtomValue } from 'jotai';
 import styled from '@emotion/styled';
 import { Profile } from '../types';
+import { chatAPI } from '../api/client';
+import { authAtom } from '../store/atoms';
 
 const { Title, Text } = Typography;
 
@@ -80,11 +89,11 @@ const ProfileName = styled(Title)`
   }
 `;
 
-const ProfileAge = styled(Text)`
-  font-size: 16px;
-  color: #8c8c8c;
-  font-weight: 500;
-`;
+// const ProfileAge = styled(Text)`
+//   font-size: 16px;
+//   color: #8c8c8c;
+//   font-weight: 500;
+// `;
 
 const ProfileDetails = styled.div`
   margin-bottom: 16px;
@@ -185,6 +194,39 @@ const DistanceTag = styled.div`
   font-weight: 600;
 `;
 
+const CardFooter = styled.div`
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
+`;
+
+const MessageButton = styled(Button)`
+  &.ant-btn {
+    background: #1890ff;
+    border-color: #1890ff;
+    border-radius: 20px;
+    height: 36px;
+    padding: 0 20px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    &:hover,
+    &:focus {
+      background: #40a9ff;
+      border-color: #40a9ff;
+      transform: translateY(-1px);
+    }
+
+    .anticon {
+      font-size: 14px;
+    }
+  }
+`;
+
 interface ProfileCardProps {
   profile: Profile;
   showMatchBadge?: boolean;
@@ -198,15 +240,49 @@ const ProfileCard: React.FC<ProfileCardProps> = ({
   showNewBadge = false,
   onCardClick,
 }) => {
+  const navigate = useNavigate();
+  const auth = useAtomValue(authAtom);
+  const currentUserId = auth.user?.id || '';
+
+  // 채팅방 생성 mutation
+  const createChatRoomMutation = useMutation({
+    mutationFn: ({ sender, receiver }: { sender: string; receiver: string }) =>
+      chatAPI.createChatRoom(sender, receiver),
+    onSuccess: (chatRoom) => {
+      console.log('채팅방 생성 성공:', chatRoom);
+      message.success('채팅방이 생성되었습니다!');
+      // 채팅 상세 페이지로 이동
+      navigate(`/chat/${chatRoom.roomId}`);
+    },
+    onError: (error) => {
+      console.error('채팅방 생성 실패:', error);
+      message.error('채팅방 생성에 실패했습니다.');
+    },
+  });
+
   const handleCardClickInternal = () => {
     if (onCardClick) {
       onCardClick(profile.id);
     }
   };
 
+  const handleSendMessage = (e: React.MouseEvent) => {
+    e.stopPropagation(); // 카드 클릭 이벤트 방지
+
+    if (!currentUserId) {
+      message.error('로그인이 필요합니다.');
+      return;
+    }
+
+    createChatRoomMutation.mutate({
+      sender: currentUserId,
+      receiver: profile.id.toString(),
+    });
+  };
+
   const renderProfileImage = () => {
     if (profile.photo && profile.photo.trim() !== '') {
-      return <img alt={profile.name} src={profile.photo} />;
+      return <img alt={profile.name} src={'https://placehold.co/600x400'} />;
     }
     return (
       <DefaultImageContainer>
@@ -230,13 +306,13 @@ const ProfileCard: React.FC<ProfileCardProps> = ({
       >
         <ProfileHeader>
           <ProfileName level={4}>{profile.name}</ProfileName>
-          <ProfileAge>{profile.age}세</ProfileAge>
+          {/* <ProfileAge>{profile.age}세</ProfileAge> */}
         </ProfileHeader>
 
         <ProfileDetails>
           <DetailItem>
             <EnvironmentOutlined />
-            <Text>{profile.location}</Text>
+            <Text>{profile.distance}</Text>
           </DetailItem>
         </ProfileDetails>
 
@@ -255,6 +331,17 @@ const ProfileCard: React.FC<ProfileCardProps> = ({
             <MovieTag>+{profile.favoriteMovies.length - 3}</MovieTag>
           )}
         </MovieTags>
+
+        <CardFooter>
+          <MessageButton
+            type="primary"
+            icon={<MessageOutlined />}
+            onClick={handleSendMessage}
+            loading={createChatRoomMutation.isPending}
+          >
+            메시지 보내기
+          </MessageButton>
+        </CardFooter>
       </StyledCard>
     </Col>
   );

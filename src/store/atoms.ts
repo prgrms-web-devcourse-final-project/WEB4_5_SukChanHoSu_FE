@@ -1,6 +1,14 @@
 import { atom } from 'jotai';
-import { Profile, LikeData, Match, ChatMessage, Chat } from '../types';
-import { AuthState, User } from '../types';
+import {
+  Profile,
+  LikeData,
+  Match,
+  ChatMessage,
+  Chat,
+  ProfileData,
+} from '../types';
+import { AuthState, User, SignupForm as SignupFormType } from '../types';
+import { authAPI, profileAPI } from '../api/client';
 
 // 현재 사용자 ID
 export const currentUserIdAtom = atom<number>(1);
@@ -421,44 +429,76 @@ export const authAtom = atom<AuthState>({
   isAuthenticated: false,
   user: null,
   loading: false,
+  error: null,
 });
 
 export const loginAtom = atom(
   null,
-  async (get, set, { email }: { email: string; password: string }) => {
-    set(authAtom, { ...get(authAtom), loading: true });
+  async (
+    get,
+    set,
+    { email, password }: { email: string; password: string }
+  ) => {
+    set(authAtom, {
+      isAuthenticated: false,
+      user: null,
+      loading: true,
+      error: null,
+    });
 
     try {
-      // 실제로는 API 호출
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const loginResponse = await authAPI.login(email, password);
 
-      // 임시 사용자 데이터
-      const user: User = {
-        id: '1',
-        email,
-        name: '김영화',
-        nickname: '영화매니아',
-        age: 28,
-        gender: 'female',
-        profileImage:
-          'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face',
-        favoriteGenres: ['로맨스', '드라마'],
-        bestMovie: {
-          title: '라라랜드',
-          year: 2016,
-          genre: '뮤지컬/로맨스',
-          reason: '꿈과 사랑 사이에서 고민하는 모습이 너무 아름다워요.',
-        },
-        bio: '영화를 사랑하는 사람입니다.',
-      };
+      if (loginResponse.data && loginResponse.data.accessToken) {
+        localStorage.setItem('token', loginResponse.data.accessToken);
 
-      set(authAtom, {
-        isAuthenticated: true,
-        user,
-        loading: false,
-      });
+        const userProfileResponse = await authAPI.getCurrentUser();
+        if (userProfileResponse.code === 'SU') {
+          const apiUser = userProfileResponse.data;
+          const user: User = {
+            id: apiUser.id ? apiUser.id.toString() : Date.now().toString(),
+            email: apiUser.email,
+            name: apiUser.nickname || apiUser.name || '사용자',
+            nickname: apiUser.nickname || '사용자',
+            age: apiUser.age || 0,
+            gender: apiUser.gender || 'other',
+            profileImage:
+              apiUser.profileImage || apiUser.profileImages?.[0] || '',
+            favoriteGenres: apiUser.favoriteGenres || [],
+            bestMovie: apiUser.lifeMovie
+              ? { title: apiUser.lifeMovie, year: 0, genre: '', reason: '' }
+              : undefined,
+            bio: apiUser.introduce || '',
+          };
+          set(authAtom, {
+            isAuthenticated: true,
+            user,
+            loading: false,
+            error: null,
+          });
+          const numericId = parseInt(user.id, 10);
+          if (!isNaN(numericId)) {
+            set(currentUserIdAtom, numericId);
+          }
+        } else {
+          throw new Error(
+            userProfileResponse.message ||
+              'Failed to fetch user profile after login'
+          );
+        }
+      } else {
+        throw new Error(
+          loginResponse.message || 'Login failed: No access token'
+        );
+      }
     } catch (error) {
-      set(authAtom, { ...get(authAtom), loading: false });
+      console.error('Login error:', error);
+      set(authAtom, {
+        isAuthenticated: false,
+        user: null,
+        loading: false,
+        error: (error as Error).message,
+      });
       throw error;
     }
   }
@@ -466,62 +506,201 @@ export const loginAtom = atom(
 
 export const signupAtom = atom(
   (get) => get(authAtom),
-  async (
-    get,
-    set,
-    userData: {
-      email: string;
-      password: string;
-      nickname: string;
-      age: number;
-      gender: 'male' | 'female' | 'other';
-      favoriteGenres: string[];
-      bestMovie?: {
-        title: string;
-        year: number;
-        genre: string;
-        reason: string;
-        posterImage?: string;
-      };
-      bio: string;
-    }
-  ) => {
-    set(authAtom, { ...get(authAtom), loading: true });
+  async (get, set, signupData: SignupFormType) => {
+    set(authAtom, {
+      isAuthenticated: false,
+      user: null,
+      loading: true,
+      error: null,
+    });
 
+    console.log('signupData', signupData);
     try {
-      // 실제로는 API 호출
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await authAPI.join({
+        email: signupData.email,
+        password: signupData.password,
+        passwordConfirm: signupData.confirmPassword,
+      });
 
-      const user: User = {
-        id: Date.now().toString(),
-        email: userData.email,
-        name: userData.nickname,
-        nickname: userData.nickname,
-        age: userData.age,
-        gender: userData.gender,
-        profileImage:
-          'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face',
-        favoriteGenres: userData.favoriteGenres,
-        bestMovie: userData.bestMovie,
-        bio: userData.bio,
+      const birthDate = new Date();
+      birthDate.setFullYear(birthDate.getFullYear() - signupData.age);
+      const formattedBirthdate = birthDate.toISOString().split('T')[0];
+
+      const mapGenreToApiEnum = (genre: string): string => {
+        return genre.toUpperCase();
       };
 
-      set(authAtom, {
-        isAuthenticated: true,
-        user,
-        loading: false,
-      });
+      const profileInfoPayload: ProfileData = {
+        nickname: signupData.nickname,
+        email: signupData.email,
+        gender:
+          signupData.gender === 'male'
+            ? 'Male'
+            : signupData.gender === 'female'
+            ? 'Female'
+            : 'Other',
+        latitude: 37.5665,
+        longitude: 126.978,
+        birthdate: formattedBirthdate,
+        searchRadius: 1073741824,
+        lifeMovie: signupData.bestMovie?.title || '',
+        favoriteGenres: signupData.favoriteGenres.map(mapGenreToApiEnum),
+        watchedMovies: [],
+        preferredTheaters: [],
+        introduce: signupData.bio || '',
+        profileImages: [],
+      } as ProfileData;
+      await profileAPI.createInfo(profileInfoPayload);
+
+      const loginResponse = await authAPI.login(
+        signupData.email,
+        signupData.password
+      );
+
+      if (loginResponse.data && loginResponse.data.accessToken) {
+        localStorage.setItem('token', loginResponse.data.accessToken);
+
+        const userProfileResponse = await authAPI.getCurrentUser();
+        if (userProfileResponse.code === 'SU') {
+          const apiUser = userProfileResponse.data;
+          const user: User = {
+            id: apiUser.id ? apiUser.id.toString() : Date.now().toString(),
+            email: apiUser.email,
+            name: apiUser.nickname || apiUser.name || '사용자',
+            nickname: apiUser.nickname || '사용자',
+            age: apiUser.age || signupData.age,
+            gender: apiUser.gender || signupData.gender,
+            profileImage:
+              apiUser.profileImage || apiUser.profileImages?.[0] || '',
+            favoriteGenres: apiUser.favoriteGenres || signupData.favoriteGenres,
+            bestMovie: apiUser.lifeMovie
+              ? { title: apiUser.lifeMovie, year: 0, genre: '', reason: '' }
+              : signupData.bestMovie,
+            bio: apiUser.introduce || signupData.bio || '',
+          };
+          set(authAtom, {
+            isAuthenticated: true,
+            user,
+            loading: false,
+            error: null,
+          });
+          const numericId = parseInt(user.id, 10);
+          if (!isNaN(numericId)) {
+            set(currentUserIdAtom, numericId);
+          }
+        } else {
+          throw new Error(
+            userProfileResponse.message ||
+              'Failed to fetch user profile after signup'
+          );
+        }
+      } else {
+        throw new Error(
+          loginResponse.message || 'Login after signup failed: No access token'
+        );
+      }
     } catch (error) {
-      set(authAtom, { ...get(authAtom), loading: false });
+      console.error('Signup process error:', error);
+      set(authAtom, {
+        isAuthenticated: false, // 에러 시 인증되지 않은 상태로 명확히 설정
+        user: null,
+        loading: false,
+        error: (error as Error).message,
+      });
       throw error;
     }
   }
 );
 
-export const logoutAtom = atom(null, (get, set) => {
+export const logoutAtom = atom(null, async (get, set) => {
+  try {
+    const { authAPI } = await import('../api/client');
+    await authAPI.logout();
+  } catch (error) {
+    console.error('로그아웃 API 호출 실패:', error);
+  } finally {
+    localStorage.removeItem('token');
+    set(authAtom, {
+      isAuthenticated: false,
+      user: null,
+      loading: false,
+      error: null, // 로그아웃 시 에러 상태 초기화
+    });
+    // currentUserIdAtom도 초기화할 수 있음: set(currentUserIdAtom, 0) 또는 null 등
+    set(currentUserIdAtom, 0); // 예시: 초기 ID 값으로 설정 (앱 로직에 따라 다름)
+  }
+});
+
+// 토큰 검증 atom
+export const validateTokenAtom = atom(null, async (get, set) => {
+  const token = localStorage.getItem('token');
+
+  if (!token) {
+    set(authAtom, {
+      isAuthenticated: false,
+      user: null,
+      loading: false,
+      error: null,
+    });
+    set(currentUserIdAtom, 0); // 사용자 ID 초기화
+    return false;
+  }
+
   set(authAtom, {
     isAuthenticated: false,
     user: null,
-    loading: false,
+    loading: true,
+    error: null,
   });
+
+  try {
+    const { authAPI } = await import('../api/client');
+    const response = await authAPI.getCurrentUser();
+    console.log('response', response);
+    if (response.code === '200') {
+      // API 응답 성공 코드 확인
+      const apiUser = response.data;
+      const user: User = {
+        id: apiUser.id ? apiUser.id.toString() : Date.now().toString(),
+        email: apiUser.email,
+        name: apiUser.nickname || apiUser.name || '사용자',
+        nickname: apiUser.nickname || '사용자',
+        age: apiUser.age || 0,
+        gender: apiUser.gender || 'other',
+        profileImage: apiUser.profileImage || apiUser.profileImages?.[0] || '',
+        favoriteGenres: apiUser.favoriteGenres || [],
+        bestMovie: apiUser.lifeMovie
+          ? { title: apiUser.lifeMovie, year: 0, genre: '', reason: '' }
+          : undefined,
+        bio: apiUser.introduce || '',
+      };
+      set(authAtom, {
+        isAuthenticated: true,
+        user,
+        loading: false,
+        error: null,
+      });
+      const numericId = parseInt(user.id, 10);
+      if (!isNaN(numericId)) {
+        set(currentUserIdAtom, numericId);
+      }
+      return true;
+    } else {
+      throw new Error(
+        response.message ||
+          'Token validation failed, server responded with an error.'
+      );
+    }
+  } catch (error) {
+    console.error('토큰 검증 실패:', error);
+    localStorage.removeItem('token');
+    set(authAtom, {
+      isAuthenticated: false,
+      user: null,
+      loading: false,
+      error: (error as Error).message,
+    });
+    set(currentUserIdAtom, 0); // 사용자 ID 초기화
+    return false;
+  }
 });
